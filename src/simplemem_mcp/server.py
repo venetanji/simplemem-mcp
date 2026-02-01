@@ -20,6 +20,10 @@ class SimplememAPI:
         self.base_url = base_url.rstrip('/')
         self.client = httpx.AsyncClient(timeout=30.0)
     
+    async def close(self):
+        """Close the HTTP client"""
+        await self.client.aclose()
+    
     async def store_memory(self, key: str, value: Any, metadata: Optional[dict] = None) -> dict:
         """Store a memory item"""
         payload = {
@@ -137,7 +141,8 @@ def create_server(api_endpoint: str = DEFAULT_API_ENDPOINT) -> FastMCP:
             
             output = f"Found {len(memories)} memories:\n"
             for mem in memories:
-                output += f"\n- Key: {mem.get('key')}\n  Value: {mem.get('value')[:100]}{'...' if len(str(mem.get('value', ''))) > 100 else ''}\n"
+                value_str = str(mem.get('value', ''))
+                output += f"\n- Key: {mem.get('key')}\n  Value: {value_str[:100]}{'...' if len(value_str) > 100 else ''}\n"
             return output
         except Exception as e:
             return f"Error listing memories: {str(e)}"
@@ -182,7 +187,8 @@ def create_server(api_endpoint: str = DEFAULT_API_ENDPOINT) -> FastMCP:
             
             output = f"Found {len(memories)} memories matching '{query}':\n"
             for mem in memories:
-                output += f"\n- Key: {mem.get('key')}\n  Value: {mem.get('value')[:100]}{'...' if len(str(mem.get('value', ''))) > 100 else ''}\n"
+                value_str = str(mem.get('value', ''))
+                output += f"\n- Key: {mem.get('key')}\n  Value: {value_str[:100]}{'...' if len(value_str) > 100 else ''}\n"
             return output
         except Exception as e:
             return f"Error searching memories: {str(e)}"
