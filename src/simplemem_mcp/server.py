@@ -18,7 +18,7 @@ class SimplememAPI:
     
     def __init__(self, base_url: str = DEFAULT_API_ENDPOINT):
         self.base_url = base_url.rstrip('/')
-        self.client = httpx.Client(timeout=30.0)
+        self.client = httpx.AsyncClient(timeout=30.0)
     
     async def store_memory(self, key: str, value: Any, metadata: Optional[dict] = None) -> dict:
         """Store a memory item"""
@@ -29,14 +29,14 @@ class SimplememAPI:
         if metadata:
             payload["metadata"] = metadata
         
-        response = self.client.post(f"{self.base_url}/memories", json=payload)
+        response = await self.client.post(f"{self.base_url}/memories", json=payload)
         response.raise_for_status()
         return response.json()
     
     async def retrieve_memory(self, key: str) -> Optional[dict]:
         """Retrieve a memory item by key"""
         try:
-            response = self.client.get(f"{self.base_url}/memories/{key}")
+            response = await self.client.get(f"{self.base_url}/memories/{key}")
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
@@ -47,14 +47,14 @@ class SimplememAPI:
     async def list_memories(self, limit: int = 100, offset: int = 0) -> dict:
         """List all memory items"""
         params = {"limit": limit, "offset": offset}
-        response = self.client.get(f"{self.base_url}/memories", params=params)
+        response = await self.client.get(f"{self.base_url}/memories", params=params)
         response.raise_for_status()
         return response.json()
     
     async def delete_memory(self, key: str) -> bool:
         """Delete a memory item"""
         try:
-            response = self.client.delete(f"{self.base_url}/memories/{key}")
+            response = await self.client.delete(f"{self.base_url}/memories/{key}")
             response.raise_for_status()
             return True
         except httpx.HTTPStatusError as e:
@@ -65,7 +65,7 @@ class SimplememAPI:
     async def search_memories(self, query: str, limit: int = 10) -> dict:
         """Search memories by query"""
         params = {"q": query, "limit": limit}
-        response = self.client.get(f"{self.base_url}/memories/search", params=params)
+        response = await self.client.get(f"{self.base_url}/memories/search", params=params)
         response.raise_for_status()
         return response.json()
 
