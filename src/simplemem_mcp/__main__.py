@@ -1,7 +1,8 @@
 """
 Main entrypoint for simplemem-mcp server
 
-This module provides the command-line interface for running the MCP server.
+This module provides the command-line interface for running the MCP server
+that connects to simplemem-api.
 """
 
 import os
