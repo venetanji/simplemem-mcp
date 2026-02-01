@@ -89,6 +89,7 @@ The simplemem-api endpoint can be configured in three ways (in order of priority
 2. **Environment variable**: `SIMPLEMEM_API_ENDPOINT` (or `SIMPLEMEM_API_URL`)
 3. **Default**: `http://localhost:8000` (assumes simplemem-api is running locally on the default port)
 
+
 ### Examples
 
 ```bash
