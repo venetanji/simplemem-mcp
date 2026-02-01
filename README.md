@@ -170,6 +170,15 @@ Recommended pattern:
 1. Call `dialogue` one or more times
 2. Call `finalize` once
 
+#### delete_memory
+Delete a specific memory entry by its ID.
+
+**Parameters:**
+- `entry_id` (string): The unique identifier of the memory entry to delete
+
+**Returns:**
+A success message if the entry was deleted, or an error message if something went wrong.
+
 #### clear
 Clear all entries (requires explicit confirmation).
 
@@ -179,7 +188,8 @@ Clear all entries (requires explicit confirmation).
 Notes:
 
 - `dialogue`/`query` will report a helpful message if the upstream API is not initialized (`/health` indicates `simplemem_initialized=false`).
-- The upstream API does not provide a delete-by-id endpoint; use `clear` with `confirmation=true` to wipe all entries.
+- Use `delete_memory` to remove individual memories by their `entry_id`.
+- Use `clear` with `confirmation=true` to wipe all entries.
 
 ## Usage with MCP Clients
 
