@@ -72,6 +72,12 @@ class SimplememAPI:
         response.raise_for_status()
         return response.json()
 
+    async def delete_memory(self, entry_id: str) -> dict:
+        """Delete a specific memory by its entry_id."""
+        response = await self.client.delete(f"{self.base_url}/memory/{entry_id}")
+        response.raise_for_status()
+        return response.json()
+
 
 def create_server(api_endpoint: str = DEFAULT_API_ENDPOINT) -> FastMCP:
     """Create and configure the MCP server"""
@@ -187,6 +193,26 @@ def create_server(api_endpoint: str = DEFAULT_API_ENDPOINT) -> FastMCP:
             )
         except Exception as e:
             return f"Error retrieving stats: {str(e)}"
+
+    @mcp.tool()
+    async def delete_memory(entry_id: str) -> str:
+        """Delete a specific memory entry by its ID.
+
+        Args:
+            entry_id: The unique identifier of the memory entry to delete
+
+        Returns:
+            A human-readable success/error message.
+        """
+        try:
+            health_result = await api.health()
+            if not health_result.get("simplemem_initialized", False):
+                return "Simplemem API is not initialized (health.simplemem_initialized=false). Configure the API with MODEL_NAME and API_KEY, then restart it."
+
+            _ = await api.delete_memory(entry_id)
+            return f"Successfully deleted memory entry '{entry_id}'"
+        except Exception as e:
+            return f"Error deleting memory: {str(e)}"
 
     @mcp.tool()
     async def clear(confirmation: bool = False) -> str:
