@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "simplemem-mcp"
 version = "0.1.0"
-description = "MCP server for simplemem-api, providing memory management tools"
+description = "MCP server that provides a seamless interface to simplemem-api for memory management"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

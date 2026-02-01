@@ -1,20 +1,26 @@
 # simplemem-mcp
 
-A Model Context Protocol (MCP) server for [simplemem-api](https://github.com/venetanji/simplemem-api). This server exposes MCP tools that map directly to the simplemem-api endpoints.
+A Model Context Protocol (MCP) server that provides a seamless interface to [simplemem-api](https://github.com/venetanji/simplemem-api). This MCP server exposes tools that map directly to the simplemem-api endpoints, enabling AI assistants to store and query conversational memories through the MCP protocol.
 
 ## Features
 
-- 🔧 **MCP Tools**: Health, dialogue ingestion, query, retrieve, stats, and clear
+- 🔧 **MCP Tools**: Health, dialogue ingestion, query, retrieve, delete_memory, stats, and clear
 - 🚀 **FastMCP**: Built with FastMCP for high-performance MCP server implementation
 - 📦 **uvx Ready**: Designed to run with `uvx` for easy installation and execution
 - ⚙️ **Configurable**: Support for custom API endpoints via CLI arguments or environment variables
-- 🏠 **Localhost Default**: Pre-configured to work with local simplemem-api instance
+- 🏠 **Localhost Default**: Pre-configured to work with local simplemem-api instance at `http://localhost:8000`
+
+## API Backend
+
+This MCP server is a client that connects to [simplemem-api](https://github.com/venetanji/simplemem-api), which provides the actual memory storage and retrieval functionality. The simplemem-mcp server acts as a bridge, exposing simplemem-api capabilities through the Model Context Protocol.
+
+**Important:** You must have a running instance of simplemem-api before using this MCP server. By default, simplemem-mcp expects the API to be available at `http://localhost:8000`, but this can be configured to point to any simplemem-api instance.
 
 ## Prerequisites
 
 - Python 3.10 or higher
 - [uv](https://github.com/astral-sh/uv) installed (for `uvx` command). Install with: `curl -LsSf https://astral.sh/uv/install.sh | sh` or `pip install uv`
-- A running instance of [simplemem-api](https://github.com/venetanji/simplemem-api)
+- **Required:** A running instance of [simplemem-api](https://github.com/venetanji/simplemem-api) (see [simplemem-api documentation](https://github.com/venetanji/simplemem-api) for setup instructions)
 
 ## Installation
 
@@ -77,11 +83,12 @@ simplemem-mcp
 
 ## Configuration
 
-The server can be configured in three ways (in order of priority):
+The simplemem-api endpoint can be configured in three ways (in order of priority):
 
 1. **Command-line argument**: `--api-endpoint`
 2. **Environment variable**: `SIMPLEMEM_API_ENDPOINT` (or `SIMPLEMEM_API_URL`)
-3. **Default**: `http://localhost:8000`
+3. **Default**: `http://localhost:8000` (assumes simplemem-api is running locally on the default port)
+
 
 ### Examples
 
@@ -128,9 +135,7 @@ Notes:
 
 ## Available Tools
 
-The MCP server provides the following tools:
-
-These map 1:1 to the upstream `simplemem-api` endpoints.
+The MCP server provides the following tools, which map 1:1 to the [simplemem-api](https://github.com/venetanji/simplemem-api) endpoints:
 
 #### health
 Check API health and initialization status.
@@ -185,7 +190,7 @@ Clear all entries (requires explicit confirmation).
 **Parameters:**
 - `confirmation` (boolean, default: false): Must be true to proceed
 
-Notes:
+**Notes:**
 
 - `dialogue`/`query` will report a helpful message if the upstream API is not initialized (`/health` indicates `simplemem_initialized=false`).
 - Use `delete_memory` to remove individual memories by their `entry_id`.
@@ -268,15 +273,18 @@ python -m build
 ### Connection Issues
 
 If you get connection errors:
-1. Ensure simplemem-api is running and accessible
-2. Check the API endpoint URL is correct
-3. Verify firewall settings allow the connection
+1. **Ensure simplemem-api is running**: The default configuration expects simplemem-api at `http://localhost:8000`. See the [simplemem-api repository](https://github.com/venetanji/simplemem-api) for setup and running instructions.
+2. **Check the API endpoint URL is correct**: Verify your endpoint configuration matches where simplemem-api is actually running.
+3. **Verify firewall settings allow the connection**: Ensure network access between simplemem-mcp and simplemem-api is not blocked.
 
 ### Port Conflicts
 
-If the default port 8000 is in use, configure simplemem-api to use a different port and update the endpoint:
+If the default port 8000 is in use by another service:
+1. Configure simplemem-api to run on a different port (see [simplemem-api documentation](https://github.com/venetanji/simplemem-api))
+2. Update the endpoint when starting simplemem-mcp:
 
 ```bash
+# If simplemem-api is running on port 8080
 uvx simplemem-mcp --api-endpoint http://localhost:8080
 ```
 
@@ -290,4 +298,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Related Projects
 
-- [simplemem-api](https://github.com/venetanji/simplemem-api) - The backend API server
+- **[simplemem-api](https://github.com/venetanji/simplemem-api)** - The backend API server that provides the memory storage and retrieval functionality. Required for simplemem-mcp to function.
