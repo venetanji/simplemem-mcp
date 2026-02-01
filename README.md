@@ -31,7 +31,32 @@ uvx simplemem-mcp --api-endpoint http://your-api-host:8080
 
 # Or use environment variable
 export SIMPLEMEM_API_ENDPOINT=http://your-api-host:8080
+# Alias supported (matches simplemem-api docs)
+export SIMPLEMEM_API_URL=http://your-api-host:8080
 uvx simplemem-mcp
+```
+
+### Install as a uv tool (recommended for servers)
+
+If you want an installed `simplemem-mcp` executable on your PATH (instead of running via `uvx` each time), use `uv tool install`:
+
+```bash
+uv tool install git+https://github.com/venetanji/simplemem-mcp.git
+
+# Ensure uv's tool bin dir is on PATH
+uv tool update-shell
+
+# Now run it like a normal CLI
+simplemem-mcp --api-endpoint http://localhost:8000
+
+# Or use HTTP transports
+simplemem-mcp --api-endpoint http://localhost:8000 --transport streamable-http --host 127.0.0.1 --port 3333
+```
+
+To upgrade later:
+
+```bash
+uv tool upgrade simplemem-mcp
 ```
 
 ### Development Installation
@@ -55,7 +80,7 @@ simplemem-mcp
 The server can be configured in three ways (in order of priority):
 
 1. **Command-line argument**: `--api-endpoint`
-2. **Environment variable**: `SIMPLEMEM_API_ENDPOINT`
+2. **Environment variable**: `SIMPLEMEM_API_ENDPOINT` (or `SIMPLEMEM_API_URL`)
 3. **Default**: `http://localhost:8000`
 
 ### Examples
@@ -66,6 +91,8 @@ uvx simplemem-mcp --api-endpoint http://192.168.1.100:8000
 
 # Using environment variable
 export SIMPLEMEM_API_ENDPOINT=http://api.example.com:8000
+# Alias supported
+export SIMPLEMEM_API_URL=http://api.example.com:8000
 uvx simplemem-mcp
 
 # Default (localhost)
