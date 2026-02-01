@@ -13,7 +13,7 @@ A Model Context Protocol (MCP) server for memory management, using [simplemem-ap
 ## Prerequisites
 
 - Python 3.10 or higher
-- [uv](https://github.com/astral-sh/uv) installed (for `uvx` command)
+- [uv](https://github.com/astral-sh/uv) installed (for `uvx` command). Install with: `curl -LsSf https://astral.sh/uv/install.sh | sh` or `pip install uv`
 - A running instance of [simplemem-api](https://github.com/venetanji/simplemem-api)
 
 ## Installation
