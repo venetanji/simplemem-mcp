@@ -28,7 +28,9 @@ Examples:
   uvx simplemem-mcp --api-endpoint http://api.example.com:8080
   
   # Use environment variable
-  export SIMPLEMEM_API_ENDPOINT=http://api.example.com:8080
+    export SIMPLEMEM_API_ENDPOINT=http://api.example.com:8080
+    # (Alias)
+    export SIMPLEMEM_API_URL=http://api.example.com:8080
   uvx simplemem-mcp
         """
     )
@@ -37,7 +39,10 @@ Examples:
         "--api-endpoint",
         type=str,
         default=None,
-        help=f"SimpleMem API endpoint URL (default: {DEFAULT_API_ENDPOINT} or SIMPLEMEM_API_ENDPOINT env var)"
+        help=(
+            f"SimpleMem API endpoint URL (default: {DEFAULT_API_ENDPOINT} or "
+            "SIMPLEMEM_API_ENDPOINT / SIMPLEMEM_API_URL env var)"
+        ),
     )
 
     parser.add_argument(
@@ -75,6 +80,7 @@ Examples:
     api_endpoint = (
         args.api_endpoint or 
         os.environ.get("SIMPLEMEM_API_ENDPOINT") or 
+        os.environ.get("SIMPLEMEM_API_URL") or 
         DEFAULT_API_ENDPOINT
     )
     
