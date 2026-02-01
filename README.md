@@ -116,6 +116,10 @@ Add a dialogue entry.
 - `content` (string): Content to store
 - `timestamp` (string, optional): Timestamp string
 
+**Important:**
+
+- After adding all dialogue entries for a session/batch, call `finalize` once to consolidate memories.
+
 #### query
 Ask a question and get an answer.
 
@@ -130,6 +134,14 @@ Retrieve recent entries.
 
 #### stats
 Get memory statistics.
+
+#### finalize
+Consolidate memories after dialogue ingestion.
+
+Recommended pattern:
+
+1. Call `dialogue` one or more times
+2. Call `finalize` once
 
 #### clear
 Clear all entries (requires explicit confirmation).
