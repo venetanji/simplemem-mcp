@@ -39,6 +39,12 @@ class SimplememAPI:
         response.raise_for_status()
         return response.json()
 
+    async def finalize(self) -> dict:
+        """Finalize/consolidate memories after dialogue ingestion."""
+        response = await self.client.post(f"{self.base_url}/finalize")
+        response.raise_for_status()
+        return response.json()
+
     async def query(self, query: str) -> dict:
         """Query memories via semantic search; returns an answer."""
         response = await self.client.post(f"{self.base_url}/query", json={"query": query})
@@ -95,7 +101,13 @@ def create_server(api_endpoint: str = DEFAULT_API_ENDPOINT) -> FastMCP:
 
     @mcp.tool()
     async def dialogue(speaker: str, content: str, timestamp: Optional[str] = None) -> str:
-        """Add a single dialogue entry to simplemem-api."""
+        """Add a single dialogue entry to simplemem-api.
+
+        Important:
+            After you finish adding all dialogue entries for a session/batch, call `finalize` once
+            to consolidate memories. Until `finalize` is called, queries/retrieve may not reflect
+            the newly added dialogue.
+        """
         try:
             health_result = await api.health()
             if not health_result.get("simplemem_initialized", False):
@@ -105,6 +117,27 @@ def create_server(api_endpoint: str = DEFAULT_API_ENDPOINT) -> FastMCP:
             return f"Successfully added dialogue for speaker '{speaker}'."
         except Exception as e:
             return f"Error adding dialogue: {str(e)}"
+
+    @mcp.tool()
+    async def finalize() -> str:
+        """Consolidate memories after dialogue ingestion.
+
+        Usage pattern:
+            1) Call `dialogue` one or more times to add entries
+            2) Call `finalize` once to consolidate memories
+
+        Returns:
+            A human-readable success/error message.
+        """
+        try:
+            health_result = await api.health()
+            if not health_result.get("simplemem_initialized", False):
+                return "Simplemem API is not initialized (health.simplemem_initialized=false). Configure the API with MODEL_NAME and API_KEY, then restart it."
+
+            _ = await api.finalize()
+            return "Successfully finalized (consolidated) memories"
+        except Exception as e:
+            return f"Error finalizing memories: {str(e)}"
 
     @mcp.tool()
     async def query(query: str) -> str:
