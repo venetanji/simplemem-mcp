@@ -23,53 +23,46 @@ class SimplememAPI:
     async def close(self):
         """Close the HTTP client"""
         await self.client.aclose()
-    
-    async def store_memory(self, key: str, value: Any, metadata: Optional[dict] = None) -> dict:
-        """Store a memory item"""
-        payload = {
-            "key": key,
-            "value": value,
-        }
-        if metadata:
-            payload["metadata"] = metadata
-        
-        response = await self.client.post(f"{self.base_url}/memories", json=payload)
+
+    async def health(self) -> dict:
+        """Check API health and initialization status."""
+        response = await self.client.get(f"{self.base_url}/health")
         response.raise_for_status()
         return response.json()
     
-    async def retrieve_memory(self, key: str) -> Optional[dict]:
-        """Retrieve a memory item by key"""
-        try:
-            response = await self.client.get(f"{self.base_url}/memories/{key}")
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                return None
-            raise
-    
-    async def list_memories(self, limit: int = 100, offset: int = 0) -> dict:
-        """List all memory items"""
-        params = {"limit": limit, "offset": offset}
-        response = await self.client.get(f"{self.base_url}/memories", params=params)
+    async def add_dialogue(self, speaker: str, content: str, timestamp: Optional[str] = None) -> dict:
+        """Add a single dialogue/memory to SimpleMem via the API."""
+        payload: dict[str, Any] = {"speaker": speaker, "content": content}
+        if timestamp:
+            payload["timestamp"] = timestamp
+        response = await self.client.post(f"{self.base_url}/dialogue", json=payload)
         response.raise_for_status()
         return response.json()
-    
-    async def delete_memory(self, key: str) -> bool:
-        """Delete a memory item"""
-        try:
-            response = await self.client.delete(f"{self.base_url}/memories/{key}")
-            response.raise_for_status()
-            return True
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                return False
-            raise
-    
-    async def search_memories(self, query: str, limit: int = 10) -> dict:
-        """Search memories by query"""
-        params = {"q": query, "limit": limit}
-        response = await self.client.get(f"{self.base_url}/memories/search", params=params)
+
+    async def query(self, query: str) -> dict:
+        """Query memories via semantic search; returns an answer."""
+        response = await self.client.post(f"{self.base_url}/query", json={"query": query})
+        response.raise_for_status()
+        return response.json()
+
+    async def retrieve(self, limit: Optional[int] = None) -> list[dict]:
+        """Retrieve raw memories (all or limited)."""
+        params: dict[str, Any] = {}
+        if limit is not None:
+            params["limit"] = limit
+        response = await self.client.get(f"{self.base_url}/retrieve", params=params)
+        response.raise_for_status()
+        return response.json()
+
+    async def stats(self) -> dict:
+        """Retrieve memory statistics."""
+        response = await self.client.get(f"{self.base_url}/stats")
+        response.raise_for_status()
+        return response.json()
+
+    async def clear(self, confirmation: bool) -> dict:
+        """Clear all memories (requires confirmation=true)."""
+        response = await self.client.delete(f"{self.base_url}/clear", json={"confirmation": confirmation})
         response.raise_for_status()
         return response.json()
 
@@ -82,115 +75,96 @@ def create_server(api_endpoint: str = DEFAULT_API_ENDPOINT) -> FastMCP:
     
     # Initialize API client
     api = SimplememAPI(api_endpoint)
-    
+
     @mcp.tool()
-    async def store_memory(key: str, value: str, metadata: Optional[dict] = None) -> str:
-        """
-        Store a memory item in simplemem.
-        
-        Args:
-            key: Unique identifier for the memory
-            value: The content to store
-            metadata: Optional metadata dictionary
-        
-        Returns:
-            Success message with stored key
-        """
+    async def health() -> str:
+        """Check the health and initialization status of simplemem-api."""
         try:
-            result = await api.store_memory(key, value, metadata)
-            return f"Successfully stored memory with key: {key}"
+            result = await api.health()
+            status = result.get("status")
+            version = result.get("version")
+            initialized = result.get("simplemem_initialized")
+            return (
+                "simplemem-api health:\n"
+                f"status: {status}\n"
+                f"version: {version}\n"
+                f"simplemem_initialized: {initialized}"
+            )
         except Exception as e:
-            return f"Error storing memory: {str(e)}"
-    
+            return f"Error checking health: {str(e)}"
+
     @mcp.tool()
-    async def retrieve_memory(key: str) -> str:
-        """
-        Retrieve a memory item by its key.
-        
-        Args:
-            key: The unique identifier of the memory to retrieve
-        
-        Returns:
-            The memory content or error message
-        """
+    async def dialogue(speaker: str, content: str, timestamp: Optional[str] = None) -> str:
+        """Add a single dialogue entry to simplemem-api."""
         try:
-            result = await api.retrieve_memory(key)
-            if result is None:
-                return f"Memory with key '{key}' not found"
-            return f"Memory found:\nKey: {result.get('key')}\nValue: {result.get('value')}\nMetadata: {result.get('metadata', {})}"
+            health_result = await api.health()
+            if not health_result.get("simplemem_initialized", False):
+                return "Simplemem API storage is not initialized (health.simplemem_initialized=false). Configure the API with MODEL_NAME and API_KEY, then restart it."
+
+            _ = await api.add_dialogue(speaker=speaker, content=content, timestamp=timestamp)
+            return f"Successfully added dialogue for speaker '{speaker}'."
         except Exception as e:
-            return f"Error retrieving memory: {str(e)}"
-    
+            return f"Error adding dialogue: {str(e)}"
+
     @mcp.tool()
-    async def list_memories(limit: int = 100, offset: int = 0) -> str:
-        """
-        List all stored memories.
-        
-        Args:
-            limit: Maximum number of memories to return (default: 100)
-            offset: Number of memories to skip (default: 0)
-        
-        Returns:
-            List of memories or error message
-        """
+    async def query(query: str) -> str:
+        """Ask simplemem-api a question (semantic query) and return its answer."""
         try:
-            result = await api.list_memories(limit, offset)
-            memories = result.get('memories', [])
+            health_result = await api.health()
+            if not health_result.get("simplemem_initialized", False):
+                return "Simplemem API querying is not initialized (health.simplemem_initialized=false). Configure the API with MODEL_NAME and API_KEY, then restart it."
+
+            result = await api.query(query)
+            answer = result.get("answer")
+            if not answer:
+                return f"No answer returned for query: {query}"
+            return f"Answer:\n{answer}"
+        except Exception as e:
+            return f"Error querying memories: {str(e)}"
+
+    @mcp.tool()
+    async def retrieve(limit: int = 100) -> str:
+        """Retrieve raw entries from simplemem-api (most recent first)."""
+        try:
+            memories = await api.retrieve(limit=limit)
             if not memories:
-                return "No memories found"
-            
-            output = f"Found {len(memories)} memories:\n"
+                return "No entries found"
+
+            output = f"Retrieved {len(memories)} entries:\n"
             for mem in memories:
-                value_str = str(mem.get('value', ''))
-                output += f"\n- Key: {mem.get('key')}\n  Value: {value_str[:100]}{'...' if len(value_str) > 100 else ''}\n"
+                value_str = str(mem.get("lossless_restatement", ""))
+                output += (
+                    f"\n- entry_id: {mem.get('entry_id')}\n"
+                    f"  lossless_restatement: {value_str[:120]}{'...' if len(value_str) > 120 else ''}\n"
+                )
             return output
         except Exception as e:
-            return f"Error listing memories: {str(e)}"
-    
+            return f"Error retrieving entries: {str(e)}"
+
     @mcp.tool()
-    async def delete_memory(key: str) -> str:
-        """
-        Delete a memory item by its key.
-        
-        Args:
-            key: The unique identifier of the memory to delete
-        
-        Returns:
-            Success or error message
-        """
+    async def stats() -> str:
+        """Retrieve stats from simplemem-api."""
         try:
-            success = await api.delete_memory(key)
-            if success:
-                return f"Successfully deleted memory with key: {key}"
-            else:
-                return f"Memory with key '{key}' not found"
+            result = await api.stats()
+            return (
+                "simplemem-api stats:\n"
+                f"total_entries: {result.get('total_entries')}\n"
+                f"memory_path: {result.get('memory_path')}\n"
+                f"db_type: {result.get('db_type')}"
+            )
         except Exception as e:
-            return f"Error deleting memory: {str(e)}"
-    
+            return f"Error retrieving stats: {str(e)}"
+
     @mcp.tool()
-    async def search_memories(query: str, limit: int = 10) -> str:
-        """
-        Search memories by query string.
-        
-        Args:
-            query: Search query string
-            limit: Maximum number of results (default: 10)
-        
-        Returns:
-            Search results or error message
-        """
+    async def clear(confirmation: bool = False) -> str:
+        """Clear all entries in simplemem-api (requires confirmation=True)."""
+        if confirmation is not True:
+            return "Refusing to clear all memories. Re-run with confirmation=True to proceed."
+
         try:
-            result = await api.search_memories(query, limit)
-            memories = result.get('results', [])
-            if not memories:
-                return f"No memories found matching query: {query}"
-            
-            output = f"Found {len(memories)} memories matching '{query}':\n"
-            for mem in memories:
-                value_str = str(mem.get('value', ''))
-                output += f"\n- Key: {mem.get('key')}\n  Value: {value_str[:100]}{'...' if len(value_str) > 100 else ''}\n"
-            return output
+            _ = await api.clear(confirmation=True)
+            return "Successfully cleared all memories"
         except Exception as e:
-            return f"Error searching memories: {str(e)}"
+            return f"Error clearing memories: {str(e)}"
     
     return mcp

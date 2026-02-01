@@ -1,10 +1,10 @@
 # simplemem-mcp
 
-A Model Context Protocol (MCP) server for memory management, using [simplemem-api](https://github.com/venetanji/simplemem-api) as the backend. This server provides tools for storing, retrieving, listing, searching, and deleting memories through the MCP interface.
+A Model Context Protocol (MCP) server for [simplemem-api](https://github.com/venetanji/simplemem-api). This server exposes MCP tools that map directly to the simplemem-api endpoints.
 
 ## Features
 
-- 🔧 **MCP Tools**: Store, retrieve, list, search, and delete memories
+- 🔧 **MCP Tools**: Health, dialogue ingestion, query, retrieve, stats, and clear
 - 🚀 **FastMCP**: Built with FastMCP for high-performance MCP server implementation
 - 📦 **uvx Ready**: Designed to run with `uvx` for easy installation and execution
 - ⚙️ **Configurable**: Support for custom API endpoints via CLI arguments or environment variables
@@ -72,43 +72,75 @@ uvx simplemem-mcp
 uvx simplemem-mcp
 ```
 
+## Transports
+
+By default, `simplemem-mcp` runs over the standard MCP **stdio** transport (suitable for most desktop MCP clients).
+
+FastMCP also supports HTTP-based transports, which you can enable via CLI flags:
+
+- `--transport streamable-http`: HTTP streaming transport
+- `--transport sse`: Server-Sent Events (SSE)
+
+### Examples
+
+```bash
+# Default: stdio
+uvx simplemem-mcp
+
+# Streamable HTTP
+uvx simplemem-mcp --transport streamable-http --host 127.0.0.1 --port 3333
+
+# SSE
+uvx simplemem-mcp --transport sse --host 127.0.0.1 --port 3333
+```
+
+Notes:
+
+- `--host`, `--port`, and `--path` only apply to HTTP transports.
+- If you're using `timeout` while testing, prefer `timeout -s INT 2 ...` so the server can shut down cleanly.
+
 ## Available Tools
 
 The MCP server provides the following tools:
 
-### store_memory
-Store a memory item with a unique key.
+These map 1:1 to the upstream `simplemem-api` endpoints.
+
+#### health
+Check API health and initialization status.
+
+#### dialogue
+Add a dialogue entry.
 
 **Parameters:**
-- `key` (string): Unique identifier for the memory
-- `value` (string): The content to store
-- `metadata` (object, optional): Additional metadata
+- `speaker` (string): Speaker identifier
+- `content` (string): Content to store
+- `timestamp` (string, optional): Timestamp string
 
-### retrieve_memory
-Retrieve a memory item by its key.
-
-**Parameters:**
-- `key` (string): The unique identifier of the memory
-
-### list_memories
-List all stored memories with pagination support.
+#### query
+Ask a question and get an answer.
 
 **Parameters:**
-- `limit` (integer, default: 100): Maximum number of memories to return
-- `offset` (integer, default: 0): Number of memories to skip
+- `query` (string): Query text
 
-### search_memories
-Search memories by query string.
-
-**Parameters:**
-- `query` (string): Search query
-- `limit` (integer, default: 10): Maximum number of results
-
-### delete_memory
-Delete a memory item by its key.
+#### retrieve
+Retrieve recent entries.
 
 **Parameters:**
-- `key` (string): The unique identifier of the memory to delete
+- `limit` (integer, default: 100): Maximum number of entries to return
+
+#### stats
+Get memory statistics.
+
+#### clear
+Clear all entries (requires explicit confirmation).
+
+**Parameters:**
+- `confirmation` (boolean, default: false): Must be true to proceed
+
+Notes:
+
+- `dialogue`/`query` will report a helpful message if the upstream API is not initialized (`/health` indicates `simplemem_initialized=false`).
+- The upstream API does not provide a delete-by-id endpoint; use `clear` with `confirmation=true` to wipe all entries.
 
 ## Usage with MCP Clients
 
