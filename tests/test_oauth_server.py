@@ -4,6 +4,8 @@ Tests for OAuth server endpoints
 
 import pytest
 import tempfile
+import base64
+import hashlib
 from pathlib import Path
 from fastapi.testclient import TestClient
 from simplemem_mcp.oauth import OAuthManager
@@ -24,6 +26,11 @@ def client(oauth_manager):
     return TestClient(app), oauth_manager
 
 
+def _pkce_challenge_s256(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode("utf-8")).digest()
+    return base64.urlsafe_b64encode(digest).decode("utf-8").rstrip("=")
+
+
 def test_health_endpoint(client):
     """Test health endpoint"""
     test_client, _ = client
@@ -32,6 +39,147 @@ def test_health_endpoint(client):
     data = response.json()
     assert data["status"] == "ok"
     assert data["service"] == "simplemem-mcp-oauth"
+
+
+def test_oauth_discovery_endpoint(client):
+    """OAuth Authorization Server Metadata (RFC 8414) is available."""
+    test_client, _ = client
+
+    response = test_client.get("/.well-known/oauth-authorization-server")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["token_endpoint"].endswith("/oauth/token")
+    assert "client_secret_post" in data["token_endpoint_auth_methods_supported"]
+    assert "client_credentials" in data["grant_types_supported"]
+
+
+def test_oauth_discovery_endpoint_with_issuer_path(client):
+    """Some clients probe /.well-known/oauth-authorization-server/<path>."""
+    test_client, _ = client
+
+    response = test_client.get("/.well-known/oauth-authorization-server/mcp")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["issuer"].endswith("/mcp")
+
+
+def test_openid_configuration_endpoint(client):
+    """Some clients probe OIDC discovery even when using OAuth tokens."""
+    test_client, _ = client
+
+    response = test_client.get("/.well-known/openid-configuration")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["token_endpoint"].endswith("/oauth/token")
+
+
+def test_oauth_protected_resource_metadata(client):
+    """Protected Resource Metadata (RFC 9728) is available."""
+    test_client, _ = client
+
+    response = test_client.get("/.well-known/oauth-protected-resource")
+    assert response.status_code == 200
+    data = response.json()
+    assert "resource" in data
+    assert "authorization_servers" in data
+    assert isinstance(data["authorization_servers"], list)
+
+
+def test_oauth_protected_resource_metadata_with_path(client):
+    """Some clients probe /.well-known/oauth-protected-resource/<path>."""
+    test_client, _ = client
+
+    response = test_client.get("/.well-known/oauth-protected-resource/mcp")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["resource"].endswith("/mcp")
+
+
+def test_authorization_code_pkce_flow(client, monkeypatch):
+    """Authorization Code + PKCE flow produces an access token."""
+
+    test_client, oauth_manager = client
+
+    # Allow redirects in test environment.
+    monkeypatch.setenv("SIMPLEMEM_OAUTH_ALLOW_ANY_REDIRECT_URI", "1")
+
+    oauth_client = oauth_manager.generate_client("test-client", "Test client")
+
+    redirect_uri = "https://example.com/callback"
+    state = "xyz"
+    verifier = "verifier-1234567890"
+    challenge = _pkce_challenge_s256(verifier)
+
+    # Step 1: GET authorize returns consent page
+    resp = test_client.get(
+        "/oauth/authorize",
+        params={
+            "response_type": "code",
+            "client_id": oauth_client["client_id"],
+            "redirect_uri": redirect_uri,
+            "state": state,
+            "scope": "mcp",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        },
+    )
+    assert resp.status_code == 200
+    assert "Authorize" in resp.text
+
+    # Step 2: POST approve redirects back with code
+    resp2 = test_client.post(
+        "/oauth/authorize",
+        data={
+            "response_type": "code",
+            "client_id": oauth_client["client_id"],
+            "redirect_uri": redirect_uri,
+            "state": state,
+            "scope": "mcp",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+            "decision": "approve",
+        },
+        follow_redirects=False,
+    )
+    assert resp2.status_code in (301, 302, 303, 307)
+    location = resp2.headers.get("location")
+    assert location is not None
+    assert location.startswith(redirect_uri)
+    assert "code=" in location
+    assert f"state={state}" in location
+
+    code = location.split("code=", 1)[1].split("&", 1)[0]
+
+    # Step 3: exchange code for token
+    token_resp = test_client.post(
+        "/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "client_id": oauth_client["client_id"],
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "code_verifier": verifier,
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert token_resp.status_code == 200
+    data = token_resp.json()
+    assert "access_token" in data
+    assert data["token_type"] == "Bearer"
+
+    # Step 4: cannot reuse code
+    token_resp2 = test_client.post(
+        "/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "client_id": oauth_client["client_id"],
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "code_verifier": verifier,
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert token_resp2.status_code == 400
 
 
 def test_token_endpoint_client_credentials(client):
@@ -44,11 +192,12 @@ def test_token_endpoint_client_credentials(client):
     # Request token with valid credentials
     response = test_client.post(
         "/oauth/token",
-        json={
+        data={
             "grant_type": "client_credentials",
             "client_id": oauth_client["client_id"],
-            "client_secret": oauth_client["client_secret"]
-        }
+            "client_secret": oauth_client["client_secret"],
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     
     assert response.status_code == 200
@@ -71,11 +220,12 @@ def test_token_endpoint_invalid_credentials(client):
     # Request token with invalid credentials
     response = test_client.post(
         "/oauth/token",
-        json={
+        data={
             "grant_type": "client_credentials",
             "client_id": "invalid-id",
-            "client_secret": "invalid-secret"
-        }
+            "client_secret": "invalid-secret",
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     
     assert response.status_code == 401
@@ -92,11 +242,12 @@ def test_token_endpoint_unsupported_grant_type(client):
     
     response = test_client.post(
         "/oauth/token",
-        json={
-            "grant_type": "authorization_code",  # Not supported yet
+        data={
+            "grant_type": "password",
             "client_id": oauth_client["client_id"],
-            "client_secret": oauth_client["client_secret"]
-        }
+            "client_secret": oauth_client["client_secret"],
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     
     assert response.status_code == 400
@@ -116,11 +267,12 @@ def test_token_endpoint_revoked_client(client):
     # Try to get token
     response = test_client.post(
         "/oauth/token",
-        json={
+        data={
             "grant_type": "client_credentials",
             "client_id": oauth_client["client_id"],
-            "client_secret": oauth_client["client_secret"]
-        }
+            "client_secret": oauth_client["client_secret"],
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     
     assert response.status_code == 401
@@ -177,12 +329,13 @@ def test_token_endpoint_with_scope(client):
     
     response = test_client.post(
         "/oauth/token",
-        json={
+        data={
             "grant_type": "client_credentials",
             "client_id": oauth_client["client_id"],
             "client_secret": oauth_client["client_secret"],
-            "scope": "read write"
-        }
+            "scope": "read write",
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     
     assert response.status_code == 200

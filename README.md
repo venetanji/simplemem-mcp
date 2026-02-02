@@ -138,6 +138,11 @@ Notes:
 
 simplemem-mcp includes built-in OAuth 2.0 authentication support for external AI clients. This allows secure integration with AI platforms like OpenAI, Claude, and other services that support OAuth authentication.
 
+This project supports two common patterns:
+
+- **Interactive “Sign in”** (Authorization Code + PKCE): used by ChatGPT Connectors and similar platforms.
+- **Service-to-service** (Client Credentials): useful for scripts/agents that can store a `client_secret`.
+
 ### OAuth Client Management
 
 #### Generate a New OAuth Client
@@ -179,7 +184,42 @@ uvx simplemem-mcp oauth-revoke-client --client-id <client_id>
 
 ### Running the OAuth Server
 
-To enable OAuth authentication, run the dedicated OAuth server alongside your MCP server:
+There are two ways to serve OAuth endpoints:
+
+1) **Recommended for ChatGPT / single public URL**: run the **combined** server so OAuth + MCP share one port.
+
+2) Run a **dedicated OAuth server** (separate port) alongside your MCP server.
+
+#### Option A: Combined OAuth + MCP server (single port)
+
+This is the easiest way to deploy behind a single tunnel / one public URL.
+
+```bash
+# Combined server: OAuth endpoints + MCP endpoint on the same port
+uvx simplemem-mcp \
+  --transport streamable-http \
+  --host 0.0.0.0 \
+  --port 3333 \
+  --oauth-required \
+  --access-log
+```
+
+What you get:
+
+- MCP endpoint: `http://<host>:3333/mcp`
+- OAuth issuer + discovery: `http://<host>:3333/.well-known/oauth-authorization-server`
+- Protected resource metadata: `http://<host>:3333/.well-known/oauth-protected-resource`
+- Authorization endpoint (Sign in): `http://<host>:3333/oauth/authorize`
+- Token endpoint: `http://<host>:3333/oauth/token`
+
+Notes:
+
+- The server also serves discovery endpoints under `/mcp/.well-known/*` because some clients probe those paths.
+- `/mcp` (no trailing slash) is handled without redirects (important for some clients).
+
+#### Option B: Dedicated OAuth server (separate port)
+
+To enable OAuth authentication on a separate port, run the dedicated OAuth server alongside your MCP server:
 
 ```bash
 # Run OAuth server (default: localhost:8080)
@@ -190,9 +230,27 @@ uvx simplemem-mcp oauth-server --host 0.0.0.0 --port 8080
 ```
 
 The OAuth server provides:
-- **Token Endpoint**: `POST /oauth/token` - Obtain access tokens (client credentials flow)
+- **Authorization Endpoint**: `GET/POST /oauth/authorize` - Sign in via Authorization Code + PKCE
+- **Token Endpoint**: `POST /oauth/token` - Obtain access tokens (client credentials and authorization code flows)
 - **Info Endpoint**: `GET /oauth/info` - Get information about the current token
 - **Health Check**: `GET /health` - Check server status
+
+### OAuth Flow (Authorization Code + PKCE)
+
+This is the flow ChatGPT Connectors typically use:
+
+1. Client calls the MCP endpoint (e.g. `/mcp`) and receives `401` with `WWW-Authenticate: Bearer ... resource_metadata=...`
+2. Client fetches `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`
+3. Client redirects the user to `/oauth/authorize` (consent screen)
+4. Server redirects back to the client’s `redirect_uri` with `code`
+5. Client exchanges `code` + `code_verifier` at `/oauth/token`
+6. Client calls MCP endpoints with `Authorization: Bearer <access_token>`
+
+Redirect URI policy:
+
+- For local testing you can set `SIMPLEMEM_OAUTH_ALLOW_ANY_REDIRECT_URI=1`.
+- For production set `SIMPLEMEM_OAUTH_ALLOWED_REDIRECT_URIS` to a comma-separated allowlist.
+- If neither is set, a small default allowlist is used that includes the ChatGPT connector redirect endpoints.
 
 ### OAuth Flow (Client Credentials)
 

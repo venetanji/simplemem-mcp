@@ -123,8 +123,9 @@ Examples:
         oauth_manager = OAuthManager()
         print(f"Starting OAuth server on {args.host}:{args.port}")
         print(f"\nOAuth Token Endpoint: http://{args.host}:{args.port}/oauth/token")
+        print(f"OAuth Discovery (RFC 8414): http://{args.host}:{args.port}/.well-known/oauth-authorization-server")
         print("Use client_credentials grant type to obtain access tokens")
-        run_oauth_server(oauth_manager, args.host, args.port)
+        run_oauth_server(oauth_manager, host=args.host, port=args.port, access_log=args.access_log)
         return
     
     # Default: run MCP server
@@ -171,6 +172,12 @@ def _add_server_arguments(parser):
         default=None,
         help="Path for HTTP transports endpoint (optional; FastMCP provides defaults).",
     )
+
+    parser.add_argument(
+        "--access-log",
+        action="store_true",
+        help="Enable HTTP access logs (Uvicorn). Default: disabled.",
+    )
     
     parser.add_argument(
         "--oauth-required",
@@ -212,6 +219,98 @@ def _run_server(args):
 
     if args.transport == "stdio":
         mcp.run(transport="stdio")
+        return
+
+    # For HTTP transports with OAuth enforcement, run a single combined ASGI app
+    # (OAuth endpoints + MCP transport) on the same port.
+    if args.transport in ["sse", "streamable-http"] and args.oauth_required:
+        from fastapi import FastAPI
+        from fastapi import Request
+        from starlette.middleware import Middleware
+        from starlette.types import ASGIApp, Scope, Receive, Send
+        from starlette.responses import Response
+        import uvicorn
+
+        from .oauth_server import attach_oauth_routes, OAuthRequiredMiddleware
+
+        host = args.host or "127.0.0.1"
+        port = args.port or 3333
+
+        # FastMCP defaults to /mcp for HTTP transports; match that unless overridden.
+        mcp_path = args.path or "/mcp"
+        if not mcp_path.startswith("/"):
+            mcp_path = f"/{mcp_path}"
+
+        oauth_manager = OAuthManager()
+
+        app = FastAPI(
+            title="SimpleMem MCP (HTTP)",
+            description="MCP server with OAuth endpoints on the same port",
+            version="0.1.0",
+        )
+        # Avoid /mcp -> /mcp/ redirects (some clients drop auth headers on redirect).
+        app.router.redirect_slashes = False
+
+        # Serve discovery + token endpoints at both root and the MCP prefix.
+        # Some clients probe /mcp/.well-known/* while others probe /.well-known/*.
+        attach_oauth_routes(app, oauth_manager, route_prefix="", issuer_prefix="")
+        attach_oauth_routes(app, oauth_manager, route_prefix=mcp_path, issuer_prefix=mcp_path)
+
+        mcp_http_app = mcp.http_app(
+            # This app is mounted at /mcp below; inside the mounted app the endpoint
+            # should be at '/'.
+            path="/",
+            transport=args.transport,
+            middleware=[Middleware(OAuthRequiredMiddleware, oauth_manager=oauth_manager)],
+        )
+
+        @app.api_route(mcp_path, methods=["GET", "POST", "OPTIONS"])
+        async def _mcp_no_trailing_slash(request: Request):
+            """Handle /mcp (no trailing slash) without redirects.
+
+            Starlette's mount routing only matches /mcp/ when redirect_slashes is
+            disabled. Some clients (including OpenAI) use a base URL ending in
+            /mcp and will POST exactly /mcp.
+            """
+
+            scope = dict(request.scope)
+            scope["path"] = "/"
+            scope["raw_path"] = b"/"
+
+            status_code: int | None = None
+            headers: list[tuple[bytes, bytes]] = []
+            body_parts: list[bytes] = []
+
+            async def _send(message):
+                nonlocal status_code, headers
+                if message["type"] == "http.response.start":
+                    status_code = message["status"]
+                    headers = message.get("headers", [])
+                elif message["type"] == "http.response.body":
+                    body_parts.append(message.get("body", b""))
+
+            await mcp_http_app(scope, request.receive, _send)
+            return Response(
+                content=b"".join(body_parts),
+                status_code=status_code or 500,
+                headers={k.decode(): v.decode() for k, v in headers},
+            )
+
+        # Best-effort: disable slash redirects inside the MCP sub-app too.
+        if hasattr(getattr(mcp_http_app, "router", None), "redirect_slashes"):
+            mcp_http_app.router.redirect_slashes = False
+
+        # Mount the MCP transport last so the explicit OAuth routes win.
+        app.mount(mcp_path, mcp_http_app)
+
+        print(f"\nOAuth Token Endpoint: http://{host}:{port}/oauth/token", file=sys.stderr)
+        print(
+            f"OAuth Discovery (RFC 8414): http://{host}:{port}/.well-known/oauth-authorization-server",
+            file=sys.stderr,
+        )
+        print(f"MCP Endpoint: http://{host}:{port}{mcp_path}", file=sys.stderr)
+
+        uvicorn.run(app, host=host, port=port, access_log=args.access_log)
         return
 
     transport_kwargs = {}

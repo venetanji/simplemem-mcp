@@ -2,7 +2,10 @@
 
 ## Overview
 
-Successfully implemented OAuth 2.0 authentication for simplemem-mcp, enabling external AI clients (OpenAI, Claude, and custom agents) to securely authenticate using the client credentials grant flow.
+Successfully implemented OAuth 2.0 authentication for simplemem-mcp, enabling external AI clients (ChatGPT/OpenAI, Claude, and custom agents) to securely authenticate using:
+
+- Authorization Code + PKCE (interactive “Sign in”)
+- Client Credentials (service-to-service)
 
 ## Implementation Details
 
@@ -27,7 +30,7 @@ Successfully implemented OAuth 2.0 authentication for simplemem-mcp, enabling ex
 
 ### Security Features
 
-- **Bcrypt Hashing**: Client secrets hashed before storage
+- **Secret Hashing**: Client secrets hashed before storage (bcrypt preferred; pbkdf2_sha256 fallback when bcrypt backend unavailable)
 - **JWT Tokens**: HS256 algorithm, 1-hour expiry
 - **File Permissions**: 
   - Directory: 700 (owner only)
@@ -38,8 +41,16 @@ Successfully implemented OAuth 2.0 authentication for simplemem-mcp, enabling ex
 
 ### API Endpoints
 
+#### GET/POST /oauth/authorize
+Authorization endpoint for Authorization Code + PKCE.
+
 #### POST /oauth/token
-OAuth 2.0 token endpoint supporting client credentials grant.
+OAuth 2.0 token endpoint supporting:
+
+- `grant_type=client_credentials`
+- `grant_type=authorization_code` (PKCE)
+
+Accepts `application/x-www-form-urlencoded` (recommended) and `application/json` (legacy/tests).
 
 **Request:**
 ```json
@@ -87,7 +98,7 @@ Health check endpoint.
 
 ### Test Coverage
 
-- **24 automated tests** (all passing)
+- **30 automated tests** (all passing)
 - **11 unit tests** for OAuth manager
 - **9 endpoint tests** for OAuth server
 - **4 integration tests** for complete flow
@@ -249,4 +260,4 @@ curl -X GET http://localhost:8080/oauth/info \
 
 ## Conclusion
 
-OAuth authentication is fully implemented, tested, and ready for production use. External AI clients can now securely authenticate with simplemem-mcp using industry-standard OAuth 2.0 client credentials flow.
+OAuth authentication is fully implemented, tested, and ready for production use. External AI clients can authenticate with simplemem-mcp using either OAuth 2.0 Authorization Code + PKCE (interactive sign-in) or Client Credentials.

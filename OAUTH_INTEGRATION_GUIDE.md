@@ -4,10 +4,16 @@ This guide explains how to integrate simplemem-mcp OAuth authentication with ext
 
 ## Overview
 
-simplemem-mcp implements OAuth 2.0 client credentials flow for secure authentication. This allows external AI services and agents to:
-- Obtain time-limited access tokens
-- Make authenticated requests to the MCP server
-- Have their access controlled and revokable
+simplemem-mcp implements OAuth 2.0 with two common patterns:
+
+- **Authorization Code + PKCE** (interactive “Sign in”): typically used by ChatGPT Connectors and similar platforms.
+- **Client Credentials** (service-to-service): useful for scripts/agents that can store a client secret.
+
+Both approaches provide:
+
+- Time-limited access tokens
+- Authenticated requests to the MCP server
+- Revocation of compromised clients
 
 ## Quick Start
 
@@ -26,7 +32,23 @@ uvx simplemem-mcp oauth-generate-client --name my-agent --description "My custom
 
 Save the generated `client_id` and `client_secret` securely.
 
-### 2. Start the OAuth Server
+### 2. Start the Server
+
+#### Recommended: single-port “combined” server (OAuth + MCP)
+
+This is the best option when you only have one public URL/tunnel.
+
+```bash
+uvx simplemem-mcp \
+  --transport streamable-http \
+  --host 0.0.0.0 \
+  --port 3333 \
+  --oauth-required
+```
+
+The MCP endpoint is `/mcp` and the OAuth endpoints are served on the same port.
+
+#### Alternative: dedicated OAuth server (separate port)
 
 ```bash
 # For local testing
@@ -36,7 +58,7 @@ uvx simplemem-mcp oauth-server --host 127.0.0.1 --port 8080
 uvx simplemem-mcp oauth-server --host 0.0.0.0 --port 8080
 ```
 
-### 3. Obtain Access Token
+### 3. (Client Credentials) Obtain Access Token
 
 Make a POST request to the token endpoint:
 
@@ -69,6 +91,28 @@ curl -X GET http://your-server:8080/oauth/info \
 ```
 
 ## Integration Examples
+
+## ChatGPT Connector Notes (Authorization Code + PKCE)
+
+ChatGPT Connectors typically expect an interactive OAuth flow:
+
+- ChatGPT hits the MCP endpoint (e.g. `https://<your-domain>/mcp`) and receives a `401` challenge.
+- ChatGPT fetches discovery endpoints (OAuth AS metadata + protected resource metadata).
+- ChatGPT redirects the user to the server’s `/oauth/authorize` consent page.
+- After approval, the server redirects back to ChatGPT’s `redirect_uri` with a `code`.
+- ChatGPT exchanges the code at `/oauth/token` with PKCE.
+
+### Redirect URI allowlisting
+
+simplemem-mcp validates `redirect_uri` at `/oauth/authorize`.
+
+Options:
+
+- Development: set `SIMPLEMEM_OAUTH_ALLOW_ANY_REDIRECT_URI=1`
+- Production: set `SIMPLEMEM_OAUTH_ALLOWED_REDIRECT_URIS` to a comma-separated list
+- If neither is set, a small default allowlist is used that includes the ChatGPT connector redirect endpoints:
+  - `https://chatgpt.com/connector_platform_oauth_redirect`
+  - `https://chat.openai.com/connector_platform_oauth_redirect`
 
 ### Python Client
 

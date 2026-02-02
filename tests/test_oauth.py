@@ -184,3 +184,37 @@ def test_clients_file_permissions(oauth_manager):
     file_stat = oauth_manager.clients_file.stat()
     file_mode = stat.S_IMODE(file_stat.st_mode)
     assert file_mode == 0o600
+
+
+def test_default_redirect_uri_allowlist(oauth_manager, monkeypatch):
+    """By default we allow the ChatGPT connector redirect URI."""
+
+    # Ensure env vars don't override defaults
+    monkeypatch.delenv("SIMPLEMEM_OAUTH_ALLOW_ANY_REDIRECT_URI", raising=False)
+    monkeypatch.delenv("SIMPLEMEM_OAUTH_ALLOWED_REDIRECT_URIS", raising=False)
+
+    assert oauth_manager.is_redirect_uri_allowed(
+        "https://chatgpt.com/connector_platform_oauth_redirect"
+    )
+    assert oauth_manager.is_redirect_uri_allowed(
+        "https://chat.openai.com/connector_platform_oauth_redirect"
+    )
+    assert oauth_manager.is_redirect_uri_allowed("https://example.com/callback") is False
+
+
+def test_redirect_uri_env_allowlist_overrides_defaults(oauth_manager, monkeypatch):
+    """If SIMPLEMEM_OAUTH_ALLOWED_REDIRECT_URIS is set, only those URIs are allowed."""
+
+    monkeypatch.delenv("SIMPLEMEM_OAUTH_ALLOW_ANY_REDIRECT_URI", raising=False)
+    monkeypatch.setenv(
+        "SIMPLEMEM_OAUTH_ALLOWED_REDIRECT_URIS",
+        "https://example.com/callback",
+    )
+
+    assert oauth_manager.is_redirect_uri_allowed("https://example.com/callback") is True
+    assert (
+        oauth_manager.is_redirect_uri_allowed(
+            "https://chatgpt.com/connector_platform_oauth_redirect"
+        )
+        is False
+    )
