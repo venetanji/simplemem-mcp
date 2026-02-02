@@ -6,6 +6,7 @@ A Model Context Protocol (MCP) server that provides a seamless interface to [sim
 
 - 🔧 **MCP Tools**: Health, dialogue ingestion, query, retrieve, delete_memory, stats, and clear
 - 🚀 **FastMCP**: Built with FastMCP for high-performance MCP server implementation
+- 🔐 **OAuth Authentication**: Secure OAuth 2.0 authentication for external AI clients (OpenAI, Claude, etc.)
 - 📦 **uvx Ready**: Designed to run with `uvx` for easy installation and execution
 - ⚙️ **Configurable**: Support for custom API endpoints via CLI arguments or environment variables
 - 🏠 **Localhost Default**: Pre-configured to work with local simplemem-api instance at `http://localhost:8000`
@@ -132,6 +133,151 @@ Notes:
 
 - `--host`, `--port`, and `--path` only apply to HTTP transports.
 - If you're using `timeout` while testing, prefer `timeout -s INT 2 ...` so the server can shut down cleanly.
+
+## OAuth Authentication
+
+simplemem-mcp includes built-in OAuth 2.0 authentication support for external AI clients. This allows secure integration with AI platforms like OpenAI, Claude, and other services that support OAuth authentication.
+
+### OAuth Client Management
+
+#### Generate a New OAuth Client
+
+Create OAuth credentials for an AI service or external client:
+
+```bash
+uvx simplemem-mcp oauth-generate-client --name openai --description "OpenAI integration"
+```
+
+This will output:
+```
+=== OAuth Client Generated ===
+Client ID: smc_PI-Q2wGQCy8M3kiV3q_y_Q
+Client Secret: Fz3ekjJ8sZf9iih6DKSqNjYCfPt9UpcxuQ5LpCwY79PZhKAa0LMmkRsRQT0I4Oi7
+Name: openai
+Description: OpenAI integration
+
+IMPORTANT: Save the client secret securely. It will not be shown again.
+```
+
+**Important:** Save both the Client ID and Client Secret securely. The secret will not be shown again.
+
+#### List Registered OAuth Clients
+
+View all registered OAuth clients:
+
+```bash
+uvx simplemem-mcp oauth-list-clients
+```
+
+#### Revoke an OAuth Client
+
+Revoke access for a specific client:
+
+```bash
+uvx simplemem-mcp oauth-revoke-client --client-id <client_id>
+```
+
+### Running the OAuth Server
+
+To enable OAuth authentication, run the dedicated OAuth server alongside your MCP server:
+
+```bash
+# Run OAuth server (default: localhost:8080)
+uvx simplemem-mcp oauth-server
+
+# Run on a specific host and port (for public access)
+uvx simplemem-mcp oauth-server --host 0.0.0.0 --port 8080
+```
+
+The OAuth server provides:
+- **Token Endpoint**: `POST /oauth/token` - Obtain access tokens (client credentials flow)
+- **Info Endpoint**: `GET /oauth/info` - Get information about the current token
+- **Health Check**: `GET /health` - Check server status
+
+### OAuth Flow (Client Credentials)
+
+1. **Generate OAuth Client**: Create client credentials using `oauth-generate-client`
+2. **Request Access Token**: External clients POST to `/oauth/token` with credentials
+3. **Use Access Token**: Include the token in requests as `Authorization: Bearer <token>`
+
+#### Example: Obtaining an Access Token
+
+```bash
+curl -X POST http://localhost:8080/oauth/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grant_type": "client_credentials",
+    "client_id": "smc_PI-Q2wGQCy8M3kiV3q_y_Q",
+    "client_secret": "Fz3ekjJ8sZf9iih6DKSqNjYCfPt9UpcxuQ5LpCwY79PZhKAa0LMmkRsRQT0I4Oi7"
+  }'
+```
+
+Response:
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer",
+  "expires_in": 3600
+}
+```
+
+#### Example: Using the Access Token
+
+```bash
+curl -X GET http://localhost:8080/oauth/info \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+### Integrating with External AI Clients
+
+#### OpenAI
+
+Configure your OpenAI application to use OAuth authentication:
+1. Generate client credentials for OpenAI: `uvx simplemem-mcp oauth-generate-client --name openai`
+2. Configure your OpenAI application with the client ID and secret
+3. Use the token endpoint to obtain access tokens before making requests
+
+#### Claude
+
+Configure Claude to use OAuth authentication:
+1. Generate client credentials for Claude: `uvx simplemem-mcp oauth-generate-client --name claude`
+2. Configure Claude's API settings with your OAuth endpoint
+3. Claude will automatically handle token acquisition and renewal
+
+#### Custom AI Agents
+
+Any client that supports OAuth 2.0 client credentials flow can authenticate:
+1. Generate credentials: `uvx simplemem-mcp oauth-generate-client --name custom-agent`
+2. Implement the client credentials flow in your application
+3. Include the Bearer token in all API requests
+
+### Security Considerations
+
+- **Secure Storage**: OAuth client credentials and secrets are stored in `~/.simplemem-mcp/oauth/` with restrictive permissions (700 for directory, 600 for files)
+- **Token Expiry**: Access tokens expire after 1 hour by default
+- **Secret Key**: A random secret key is automatically generated for JWT signing
+- **HTTPS Recommended**: For production deployments, use HTTPS to protect tokens in transit
+- **Revocation**: Revoke compromised clients immediately using `oauth-revoke-client`
+
+### OAuth Server Display on Startup
+
+When running the MCP server with HTTP transports, active OAuth clients are displayed:
+
+```bash
+uvx simplemem-mcp --transport streamable-http --host 0.0.0.0 --port 3333
+```
+
+Output:
+```
+Starting SimpleMem MCP Server...
+API Endpoint: http://localhost:8000
+Transport: streamable-http
+
+=== Active OAuth Clients (2) ===
+  - openai (ID: smc_PI-Q2wGQCy8M3kiV3q_y_Q)
+  - claude (ID: smc_MG4epJ6DR1A34fiNhCnA4Q)
+  OAuth authentication: Optional (use --oauth-required to enforce)
+```
 
 ## Available Tools
 
