@@ -4,6 +4,12 @@
 
 simplemem-mcp is a Model Context Protocol (MCP) server that provides memory management tools by interfacing with simplemem-api. The project uses FastMCP and is designed to run with `uvx` for easy execution.
 
+## Tooling
+
+- This project uses `uv` for dependency management and running commands.
+- Prefer `uv run ...` for Python commands (tests, scripts, linters).
+- Prefer `uvx simplemem-mcp ...` for running the installed CLI.
+
 ## Architecture
 
 - **MCP Server**: Built with FastMCP framework
@@ -68,6 +74,10 @@ The server supports three configuration methods (in priority order):
 - Verify default localhost configuration
 - Test custom endpoint configuration
 - Validate error handling for API failures
+
+Run tests via `uv`:
+
+`uv run pytest`
 
 ### Common Patterns
 
