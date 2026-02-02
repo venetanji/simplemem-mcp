@@ -243,10 +243,23 @@ def _run_server(args):
 
         oauth_manager = OAuthManager()
 
+        # IMPORTANT: FastMCP's HTTP transport requires its lifespan to run to
+        # initialize the StreamableHTTPSessionManager task group. When embedding
+        # the FastMCP ASGI app inside another FastAPI/Starlette app, we must
+        # forward the FastMCP app's lifespan to the parent app.
+        mcp_http_app = mcp.http_app(
+            # This app is mounted at /mcp below; inside the mounted app the endpoint
+            # should be at '/'.
+            path="/",
+            transport=args.transport,
+            middleware=[Middleware(OAuthRequiredMiddleware, oauth_manager=oauth_manager)],
+        )
+
         app = FastAPI(
             title="SimpleMem MCP (HTTP)",
             description="MCP server with OAuth endpoints on the same port",
             version="0.1.0",
+            lifespan=mcp_http_app.lifespan,
         )
         # Avoid /mcp -> /mcp/ redirects (some clients drop auth headers on redirect).
         app.router.redirect_slashes = False
@@ -255,14 +268,6 @@ def _run_server(args):
         # Some clients probe /mcp/.well-known/* while others probe /.well-known/*.
         attach_oauth_routes(app, oauth_manager, route_prefix="", issuer_prefix="")
         attach_oauth_routes(app, oauth_manager, route_prefix=mcp_path, issuer_prefix=mcp_path)
-
-        mcp_http_app = mcp.http_app(
-            # This app is mounted at /mcp below; inside the mounted app the endpoint
-            # should be at '/'.
-            path="/",
-            transport=args.transport,
-            middleware=[Middleware(OAuthRequiredMiddleware, oauth_manager=oauth_manager)],
-        )
 
         @app.api_route(mcp_path, methods=["GET", "POST", "OPTIONS"])
         async def _mcp_no_trailing_slash(request: Request):
