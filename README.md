@@ -367,6 +367,11 @@ Retrieve recent entries.
 
 **Parameters:**
 - `limit` (integer, default: 100): Maximum number of entries to return
+- `query` (string, optional): Query string for semantic search. When provided, performs vector similarity search to return the most relevant memories. When omitted, returns all memories (most recent first).
+
+**Examples:**
+- `retrieve(limit=50)` - Get 50 most recent memories
+- `retrieve(query="meeting location", limit=10)` - Get 10 most relevant memories about meeting locations
 
 #### stats
 Get memory statistics.

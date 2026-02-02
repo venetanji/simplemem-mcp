@@ -51,11 +51,13 @@ class SimplememAPI:
         response.raise_for_status()
         return response.json()
 
-    async def retrieve(self, limit: Optional[int] = None) -> list[dict]:
-        """Retrieve raw memories (all or limited)."""
+    async def retrieve(self, limit: Optional[int] = None, query: Optional[str] = None) -> list[dict]:
+        """Retrieve raw memories (all or limited), optionally filtered by semantic search."""
         params: dict[str, Any] = {}
         if limit is not None:
             params["limit"] = limit
+        if query is not None:
+            params["query"] = query
         response = await self.client.get(f"{self.base_url}/retrieve", params=params)
         response.raise_for_status()
         return response.json()
@@ -162,14 +164,29 @@ def create_server(api_endpoint: str = DEFAULT_API_ENDPOINT) -> FastMCP:
             return f"Error querying memories: {str(e)}"
 
     @mcp.tool()
-    async def retrieve(limit: int = 100) -> str:
-        """Retrieve raw entries from simplemem-api (most recent first)."""
+    async def retrieve(limit: int = 100, query: Optional[str] = None) -> str:
+        """Retrieve raw entries from simplemem-api.
+        
+        Args:
+            limit: Maximum number of entries to return (default: 100)
+            query: Optional query string for semantic search. When provided, performs
+                   vector similarity search to return the most relevant memories.
+                   When omitted, returns all memories (most recent first).
+        
+        Examples:
+            - retrieve(limit=50) - Get 50 most recent memories
+            - retrieve(query="meeting location", limit=10) - Get 10 most relevant memories about meeting locations
+        """
         try:
-            memories = await api.retrieve(limit=limit)
+            memories = await api.retrieve(limit=limit, query=query)
             if not memories:
                 return "No entries found"
 
-            output = f"Retrieved {len(memories)} entries:\n"
+            search_type = "semantic search results" if query else "entries"
+            output = f"Retrieved {len(memories)} {search_type}:\n"
+            if query:
+                output += f"(Query: '{query}')\n"
+            
             for mem in memories:
                 value_str = str(mem.get("lossless_restatement", ""))
                 output += (
