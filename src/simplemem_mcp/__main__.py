@@ -122,7 +122,7 @@ Examples:
     elif args.command == 'oauth-server':
         oauth_manager = OAuthManager()
         print(f"Starting OAuth server on {args.host}:{args.port}")
-        print("\nOAuth Token Endpoint: http://{args.host}:{args.port}/oauth/token")
+        print(f"\nOAuth Token Endpoint: http://{args.host}:{args.port}/oauth/token")
         print("Use client_credentials grant type to obtain access tokens")
         run_oauth_server(oauth_manager, args.host, args.port)
         return
@@ -179,8 +179,6 @@ def _add_server_arguments(parser):
     )
 
 
-def _run_server(args):
-    """Run the MCP server"""
 def _run_server(args):
     """Run the MCP server"""
     # Determine API endpoint with priority: CLI arg > env var > default

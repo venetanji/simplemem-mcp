@@ -11,7 +11,7 @@ import secrets
 import hashlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 import jwt
 from passlib.hash import bcrypt
 
@@ -208,7 +208,7 @@ class OAuthManager:
         
         return jwt.encode(payload, self._get_secret_key(), algorithm="HS256")
     
-    def verify_token(self, token: str) -> Optional[Dict[str, any]]:
+    def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
         """Verify and decode an access token
         
         Args:
