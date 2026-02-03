@@ -1,0 +1,49 @@
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# uv
+uv.lock
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.github/
+.gitignore
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Documentation (keep README.md for package build)
+# *.md
+
+# Temporary files
+tmp/
+temp/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# OAuth data (should be in volumes)
+.simplemem-mcp/

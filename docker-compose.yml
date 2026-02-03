@@ -1,0 +1,56 @@
+services:
+  # SimpleMem API service (CUDA/GPU version)
+  # This service is built from the venetanji/simplemem-api repository using Dockerfile.cuda
+  simplemem-api:
+    build:
+      context: https://github.com/venetanji/simplemem-api.git
+      dockerfile: Dockerfile.cuda
+    container_name: simplemem-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - api-models:/app/models
+      - api-data:/app/data
+    environment:
+      - MODEL_NAME=${MODEL_NAME:-gpt-4}
+      - API_KEY=${API_KEY}
+      - DB_PATH=/app/data/simplemem_data
+      - DB_TYPE=lancedb
+      - TABLE_NAME=memories
+      - USE_CUDA=true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    # Health check is defined in the Dockerfile.cuda from simplemem-api repo
+
+  # SimpleMem MCP Server
+  simplemem-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: simplemem-mcp
+    ports:
+      - "3333:3333"
+      - "8080:8080"
+    volumes:
+      - mcp-oauth:/root/.simplemem-mcp
+    environment:
+      # Point to the API service by container name
+      - SIMPLEMEM_API_ENDPOINT=http://simplemem-api:8000
+    depends_on:
+      - simplemem-api
+    restart: unless-stopped
+    # Health check is defined in the Dockerfile
+
+volumes:
+  api-models:
+    driver: local
+  api-data:
+    driver: local
+  mcp-oauth:
+    driver: local
