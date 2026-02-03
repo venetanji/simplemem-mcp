@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  # SimpleMem API service (CPU version)
+  # This service is from the venetanji/simplemem-api repository
+  simplemem-api:
+    image: ghcr.io/venetanji/simplemem-api:latest
+    container_name: simplemem-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - api-models:/app/models
+      - api-data:/app/data
+    environment:
+      - MODEL_NAME=${MODEL_NAME:-gpt-4}
+      - API_KEY=${API_KEY}
+      - DB_PATH=/app/data/simplemem_data
+      - DB_TYPE=lancedb
+      - TABLE_NAME=memories
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import http.client; conn = http.client.HTTPConnection('localhost', 8000); conn.request('GET', '/health'); resp = conn.getresponse(); exit(0 if resp.status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  # SimpleMem MCP Server
+  simplemem-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: simplemem-mcp
+    ports:
+      - "3333:3333"
+      - "8080:8080"
+    volumes:
+      - mcp-oauth:/root/.simplemem-mcp
+    environment:
+      # Point to the API service by container name
+      - SIMPLEMEM_API_ENDPOINT=http://simplemem-api:8000
+    depends_on:
+      - simplemem-api
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import http.client; conn = http.client.HTTPConnection('localhost', 3333); conn.request('GET', '/health'); resp = conn.getresponse(); exit(0 if resp.status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  api-models:
+    driver: local
+  api-data:
+    driver: local
+  mcp-oauth:
+    driver: local
