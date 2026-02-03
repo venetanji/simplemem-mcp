@@ -3,6 +3,11 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
+
 # Install uv for fast package management
 RUN pip install --no-cache-dir uv
 
@@ -23,7 +28,7 @@ EXPOSE 3333 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD python -c "import http.client; conn = http.client.HTTPConnection('localhost', 3333); conn.request('GET', '/health'); resp = conn.getresponse(); exit(0 if resp.status == 200 else 1)" || exit 1
+  CMD curl -f http://localhost:3333/health || exit 1
 
 # Default command: run MCP server with streamable-http transport
 # Override with docker-compose or docker run commands as needed

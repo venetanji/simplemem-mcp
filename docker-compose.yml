@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # SimpleMem API service (CUDA/GPU version)
   # This service is built from the venetanji/simplemem-api repository using Dockerfile.cuda
@@ -28,12 +26,7 @@ services:
               count: all
               capabilities: [gpu]
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import http.client; conn = http.client.HTTPConnection('localhost', 8000); conn.request('GET', '/health'); resp = conn.getresponse(); exit(0 if resp.status == 200 else 1)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
+    # Health check is defined in the Dockerfile.cuda from simplemem-api repo
 
   # SimpleMem MCP Server
   simplemem-mcp:
@@ -52,12 +45,7 @@ services:
     depends_on:
       - simplemem-api
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import http.client; conn = http.client.HTTPConnection('localhost', 3333); conn.request('GET', '/health'); resp = conn.getresponse(); exit(0 if resp.status == 200 else 1)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+    # Health check is defined in the Dockerfile
 
 volumes:
   api-models:

@@ -192,7 +192,10 @@ The docker-compose configuration uses the CUDA-enabled simplemem-api image which
 - NVIDIA Container Toolkit installed
 - Docker configured to use the NVIDIA runtime
 
-If you don't have GPU support, you can modify the `docker-compose.yml` to use the CPU-only version by changing the dockerfile to `Dockerfile` instead of `Dockerfile.cuda` and removing the GPU deployment configuration.
+If you don't have GPU support, you can modify the `docker-compose.yml` to use the CPU-only version:
+- Change `dockerfile: Dockerfile.cuda` to `dockerfile: Dockerfile` in the simplemem-api service
+- Remove the entire `deploy.resources` section 
+- Remove or set `USE_CUDA=false` in the environment variables
 
 ## Configuration
 
