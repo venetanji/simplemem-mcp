@@ -82,6 +82,118 @@ pip install -e .
 simplemem-mcp
 ```
 
+### Docker Installation (Recommended for Production)
+
+The easiest way to run both simplemem-api and simplemem-mcp together is using Docker Compose:
+
+#### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) installed
+- [Docker Compose](https://docs.docker.com/compose/install/) installed
+- **For GPU support**: [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) installed
+
+#### Quick Start with Docker Compose
+
+```bash
+# Clone the repository
+git clone https://github.com/venetanji/simplemem-mcp.git
+cd simplemem-mcp
+
+# Create a .env file with your API key
+echo "API_KEY=your_api_key_here" > .env
+echo "MODEL_NAME=gpt-4" >> .env
+
+# Start both services (API + MCP server)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
+The docker-compose setup will:
+- Build and run the **simplemem-api** service with CUDA/GPU support (from [simplemem-api repository](https://github.com/venetanji/simplemem-api))
+- Build and run the **simplemem-mcp** server connected to the API
+- Create persistent volumes for models, data, and OAuth credentials
+- Configure networking between services automatically
+
+#### Services and Ports
+
+After running `docker-compose up`, you'll have:
+
+- **SimpleMem API**: `http://localhost:8000`
+  - Health endpoint: `http://localhost:8000/health`
+  - Built from simplemem-api repository using Dockerfile.cuda
+  - GPU-accelerated for faster inference
+  
+- **SimpleMem MCP Server**: `http://localhost:3333`
+  - MCP endpoint: `http://localhost:3333/mcp`
+  - OAuth server: `http://localhost:8080`
+  - Automatically connected to the API service
+
+#### Environment Variables
+
+Create a `.env` file in the project root with these variables:
+
+```bash
+# Required: API key for LLM provider
+API_KEY=your_api_key_here
+
+# Optional: Model name (default: gpt-4)
+MODEL_NAME=gpt-4
+
+# Optional: Override API endpoint (default: http://simplemem-api:8000)
+# SIMPLEMEM_API_ENDPOINT=http://custom-api:8000
+```
+
+#### Docker Volumes
+
+The docker-compose setup creates three persistent volumes:
+
+- `api-models`: Stores downloaded models and HuggingFace cache
+- `api-data`: Stores the LanceDB database and memory data
+- `mcp-oauth`: Stores OAuth client credentials
+
+To reset all data:
+
+```bash
+docker-compose down -v
+```
+
+#### Building the MCP Server Image Only
+
+To build just the simplemem-mcp Docker image:
+
+```bash
+docker build -t simplemem-mcp:latest .
+```
+
+#### Running the MCP Server Container Standalone
+
+To run the MCP server container by itself (assumes simplemem-api is running elsewhere):
+
+```bash
+docker run -d \
+  --name simplemem-mcp \
+  -p 3333:3333 \
+  -p 8080:8080 \
+  -e SIMPLEMEM_API_ENDPOINT=http://your-api-host:8000 \
+  -v mcp-oauth:/root/.simplemem-mcp \
+  simplemem-mcp:latest
+```
+
+#### GPU Requirements
+
+The docker-compose configuration uses the CUDA-enabled simplemem-api image which requires:
+
+- NVIDIA GPU with CUDA support
+- NVIDIA Container Toolkit installed
+- Docker configured to use the NVIDIA runtime
+
+If you don't have GPU support, you can modify the `docker-compose.yml` to use the CPU-only version by changing the dockerfile to `Dockerfile` instead of `Dockerfile.cuda` and removing the GPU deployment configuration.
+
 ## Configuration
 
 The simplemem-api endpoint can be configured in three ways (in order of priority):
@@ -496,6 +608,44 @@ If the default port 8000 is in use by another service:
 # If simplemem-api is running on port 8080
 uvx simplemem-mcp --api-endpoint http://localhost:8080
 ```
+
+### Docker Issues
+
+#### GPU Not Available
+
+If you see errors about CUDA or GPU not being available:
+
+1. **Verify NVIDIA Container Toolkit is installed**:
+   ```bash
+   docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
+   ```
+
+2. **Check Docker can access the GPU**:
+   ```bash
+   docker info | grep -i runtime
+   ```
+
+3. **If no GPU is available**, modify `docker-compose.yml` to use the CPU version:
+   - Change `dockerfile: Dockerfile.cuda` to `dockerfile: Dockerfile`
+   - Remove the `deploy.resources` section
+   - Remove `USE_CUDA=true` environment variable
+
+#### Container Build Failures
+
+If `docker-compose build` fails:
+
+1. **Check Docker daemon is running**: `docker ps`
+2. **Ensure you have enough disk space**: `df -h`
+3. **Try building with no cache**: `docker-compose build --no-cache`
+
+#### Services Not Communicating
+
+If the MCP server can't reach the API:
+
+1. **Check both containers are running**: `docker-compose ps`
+2. **Check the API is healthy**: `docker-compose exec simplemem-api curl http://localhost:8000/health`
+3. **Check logs**: `docker-compose logs simplemem-api` and `docker-compose logs simplemem-mcp`
+4. **Verify networking**: `docker network ls` and `docker network inspect simplemem-mcp_default`
 
 ## Contributing
 
