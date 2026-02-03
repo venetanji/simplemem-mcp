@@ -33,9 +33,8 @@ uv.lock
 .coverage
 htmlcov/
 
-# Documentation
-*.md
-!README.md
+# Documentation (keep README.md for package build)
+# *.md
 
 # Temporary files
 tmp/
