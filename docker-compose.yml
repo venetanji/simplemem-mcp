@@ -1,10 +1,12 @@
 version: '3.8'
 
 services:
-  # SimpleMem API service (CPU version)
-  # This service is from the venetanji/simplemem-api repository
+  # SimpleMem API service (CUDA/GPU version)
+  # This service is built from the venetanji/simplemem-api repository using Dockerfile.cuda
   simplemem-api:
-    image: ghcr.io/venetanji/simplemem-api:latest
+    build:
+      context: https://github.com/venetanji/simplemem-api.git
+      dockerfile: Dockerfile.cuda
     container_name: simplemem-api
     ports:
       - "8000:8000"
@@ -17,6 +19,14 @@ services:
       - DB_PATH=/app/data/simplemem_data
       - DB_TYPE=lancedb
       - TABLE_NAME=memories
+      - USE_CUDA=true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import http.client; conn = http.client.HTTPConnection('localhost', 8000); conn.request('GET', '/health'); resp = conn.getresponse(); exit(0 if resp.status == 200 else 1)"]
