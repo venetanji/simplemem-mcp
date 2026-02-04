@@ -83,7 +83,7 @@ async def test_complete_oauth_flow(oauth_server):
         
         assert "access_token" in token_data
         assert token_data["token_type"] == "Bearer"
-        assert token_data["expires_in"] == 3600
+        assert token_data["expires_in"] == oauth_manager.token_expiry_seconds()
         
         access_token = token_data["access_token"]
         
@@ -183,3 +183,88 @@ async def test_openai_claude_scenario(oauth_server):
             headers={"Authorization": f"Bearer {claude_token}"}
         )
         assert claude_info.json()["client_name"] == "claude"
+
+
+@pytest.mark.asyncio
+async def test_authorization_code_refresh_flow(oauth_server, monkeypatch):
+    """Authorization Code + PKCE flow returns refresh token and refresh grant works."""
+    oauth_manager, base_url = oauth_server
+
+    client = oauth_manager.generate_client("refresh-client", "Refresh flow")
+
+    # Use a default-allowed redirect URI (server runs in a separate process).
+    redirect_uri = "https://chatgpt.com/connector_platform_oauth_redirect"
+    verifier = "verifier-1234567890"
+    challenge = ""
+    # simple PKCE helper inline
+    import hashlib
+    import base64
+
+    digest = hashlib.sha256(verifier.encode("utf-8")).digest()
+    challenge = base64.urlsafe_b64encode(digest).decode("utf-8").rstrip("=")
+
+    async with httpx.AsyncClient(follow_redirects=False) as http_client:
+        # GET authorize
+        resp = await http_client.get(
+            f"{base_url}/oauth/authorize",
+            params={
+                "response_type": "code",
+                "client_id": client["client_id"],
+                "redirect_uri": redirect_uri,
+                "state": "state1",
+                "scope": "mcp offline_access",
+                "code_challenge": challenge,
+                "code_challenge_method": "S256",
+            },
+        )
+        assert resp.status_code == 200
+
+        # POST approve
+        resp2 = await http_client.post(
+            f"{base_url}/oauth/authorize",
+            data={
+                "response_type": "code",
+                "client_id": client["client_id"],
+                "redirect_uri": redirect_uri,
+                "state": "state1",
+                "scope": "mcp offline_access",
+                "code_challenge": challenge,
+                "code_challenge_method": "S256",
+                "decision": "approve",
+            },
+        )
+        assert resp2.status_code in (301, 302, 303, 307)
+        location = resp2.headers.get("location")
+        assert location
+        code = location.split("code=", 1)[1].split("&", 1)[0]
+
+        # Exchange code for tokens
+        token_resp = await http_client.post(
+            f"{base_url}/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": client["client_id"],
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "code_verifier": verifier,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert token_resp.status_code == 200
+        token_data = token_resp.json()
+        assert "refresh_token" in token_data
+
+        # Refresh token grant
+        refresh_resp = await http_client.post(
+            f"{base_url}/oauth/token",
+            data={
+                "grant_type": "refresh_token",
+                "client_id": client["client_id"],
+                "refresh_token": token_data["refresh_token"],
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert refresh_resp.status_code == 200
+        refresh_data = refresh_resp.json()
+        assert "access_token" in refresh_data
+        assert "refresh_token" in refresh_data

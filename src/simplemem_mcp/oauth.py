@@ -56,6 +56,17 @@ TOKEN_EXPIRY_SECONDS = 3600  # 1 hour
 REFRESH_TOKEN_EXPIRY_DAYS = 30
 AUTH_CODE_EXPIRY_SECONDS = 600  # 10 minutes
 
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
 # ChatGPT connector uses a fixed OAuth redirect URI. Allow it by default so
 # OAuth sign-in works out-of-the-box, while still supporting strict allowlists.
 DEFAULT_ALLOWED_REDIRECT_URIS: set[str] = {
@@ -84,6 +95,7 @@ class OAuthManager:
         self.oauth_dir = oauth_dir or DEFAULT_OAUTH_DIR
         self.clients_file = self.oauth_dir / "clients.json"
         self.auth_codes_file = self.oauth_dir / "auth_codes.json"
+        self.refresh_tokens_file = self.oauth_dir / "refresh_tokens.json"
         self.secret_key_file = self.oauth_dir / "secret_key.txt"
         self._ensure_oauth_dir()
         self._ensure_secret_key()
@@ -104,6 +116,30 @@ class OAuthManager:
     def _get_secret_key(self) -> str:
         """Get the JWT secret key"""
         return self.secret_key_file.read_text().strip()
+
+    def token_expiry_seconds(self) -> int:
+        """Access token lifetime in seconds.
+
+        Configure with SIMPLEMEM_OAUTH_TOKEN_EXPIRY_SECONDS.
+        """
+
+        return _env_int("SIMPLEMEM_OAUTH_TOKEN_EXPIRY_SECONDS", TOKEN_EXPIRY_SECONDS)
+
+    def jwt_leeway_seconds(self) -> int:
+        """Clock-skew leeway (seconds) when verifying JWTs.
+
+        Configure with SIMPLEMEM_OAUTH_JWT_LEEWAY_SECONDS.
+        """
+
+        return _env_int("SIMPLEMEM_OAUTH_JWT_LEEWAY_SECONDS", 0)
+
+    def refresh_token_expiry_days(self) -> int:
+        """Refresh token lifetime in days.
+
+        Configure with SIMPLEMEM_OAUTH_REFRESH_TOKEN_EXPIRY_DAYS.
+        """
+
+        return _env_int("SIMPLEMEM_OAUTH_REFRESH_TOKEN_EXPIRY_DAYS", REFRESH_TOKEN_EXPIRY_DAYS)
     
     def _load_clients(self) -> Dict[str, dict]:
         """Load OAuth clients from file"""
@@ -134,6 +170,20 @@ class OAuthManager:
         with open(self.auth_codes_file, "w") as f:
             json.dump(auth_codes, f, indent=2)
         os.chmod(self.auth_codes_file, 0o600)
+
+    def _load_refresh_tokens(self) -> Dict[str, dict]:
+        if not self.refresh_tokens_file.exists():
+            return {}
+        try:
+            with open(self.refresh_tokens_file, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return {}
+
+    def _save_refresh_tokens(self, refresh_tokens: Dict[str, dict]) -> None:
+        with open(self.refresh_tokens_file, "w") as f:
+            json.dump(refresh_tokens, f, indent=2)
+        os.chmod(self.refresh_tokens_file, 0o600)
 
     def is_redirect_uri_allowed(self, redirect_uri: str) -> bool:
         """Check whether a redirect URI is allowed.
@@ -245,6 +295,70 @@ class OAuthManager:
         record["used_at"] = datetime.now(timezone.utc).isoformat()
         auth_codes[code] = record
         self._save_auth_codes(auth_codes)
+
+        return {"client_id": client_id, "scope": record.get("scope", "")}
+
+    def generate_refresh_token(self, *, client_id: str, scope: str = "") -> str:
+        """Generate a refresh token for a client.
+
+        Args:
+            client_id: The client ID
+            scope: Optional scope string
+
+        Returns:
+            Refresh token string
+        """
+
+        client = self.get_client(client_id)
+        if not client or client.get("revoked", False):
+            raise ValueError("Invalid client_id")
+
+        token = secrets.token_urlsafe(48)
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(days=self.refresh_token_expiry_days())
+
+        refresh_tokens = self._load_refresh_tokens()
+        refresh_tokens[token] = {
+            "client_id": client_id,
+            "scope": scope,
+            "created_at": now.isoformat(),
+            "expires_at": expires_at.isoformat(),
+            "used": False,
+        }
+        self._save_refresh_tokens(refresh_tokens)
+        return token
+
+    def consume_refresh_token(self, *, refresh_token: str, client_id: str) -> Dict[str, Any]:
+        """Validate and consume a refresh token (rotating).
+
+        Returns:
+            Dict with client_id and scope.
+        """
+
+        refresh_tokens = self._load_refresh_tokens()
+        record = refresh_tokens.get(refresh_token)
+        if not record:
+            raise ValueError("Invalid refresh_token")
+
+        if record.get("used"):
+            raise ValueError("Refresh token already used")
+
+        if record.get("client_id") != client_id:
+            raise ValueError("Invalid client_id")
+
+        try:
+            expires_at = datetime.fromisoformat(record["expires_at"])
+        except Exception:
+            raise ValueError("Invalid refresh_token")
+
+        if datetime.now(timezone.utc) >= expires_at:
+            raise ValueError("Refresh token expired")
+
+        # Mark used (rotating refresh tokens)
+        record["used"] = True
+        record["used_at"] = datetime.now(timezone.utc).isoformat()
+        refresh_tokens[refresh_token] = record
+        self._save_refresh_tokens(refresh_tokens)
 
         return {"client_id": client_id, "scope": record.get("scope", "")}
     
@@ -380,7 +494,7 @@ class OAuthManager:
             "sub": client_id,
             "name": client["name"],
             "type": "access_token",
-            "exp": datetime.now(timezone.utc) + timedelta(seconds=TOKEN_EXPIRY_SECONDS),
+            "exp": datetime.now(timezone.utc) + timedelta(seconds=self.token_expiry_seconds()),
             "iat": datetime.now(timezone.utc)
         }
         
@@ -399,7 +513,8 @@ class OAuthManager:
             payload = jwt.decode(
                 token,
                 self._get_secret_key(),
-                algorithms=["HS256"]
+                algorithms=["HS256"],
+                leeway=self.jwt_leeway_seconds(),
             )
             
             # Check if client is still valid

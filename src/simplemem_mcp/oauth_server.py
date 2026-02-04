@@ -33,6 +33,7 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str
     expires_in: int
+    refresh_token: Optional[str] = None
     scope: Optional[str] = None
 
 
@@ -56,6 +57,13 @@ class OAuthRequiredMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         base_url = str(request.base_url).rstrip("/")
+        root_path = (request.scope.get("root_path") or "").rstrip("/")
+        # Depending on how the request is routed (mounted app vs manual forwarding),
+        # request.base_url may or may not include root_path. Normalize so the
+        # advertised resource_metadata is consistent.
+        if root_path and not base_url.endswith(root_path):
+            base_url = f"{base_url}{root_path}"
+
         resource_metadata = f"{base_url}/.well-known/oauth-protected-resource"
 
         auth = request.headers.get("authorization")
@@ -145,7 +153,7 @@ def attach_oauth_routes(
                 "client_secret_post",
                 "none",
             ],
-            "grant_types_supported": ["client_credentials", "authorization_code"],
+            "grant_types_supported": ["client_credentials", "authorization_code", "refresh_token"],
             "response_types_supported": ["code"],
             "code_challenge_methods_supported": ["S256"],
         }
@@ -401,7 +409,7 @@ def attach_oauth_routes(
                 return TokenResponse(
                     access_token=access_token,
                     token_type="Bearer",
-                    expires_in=3600,
+                    expires_in=oauth_manager.token_expiry_seconds(),
                     scope=scope,
                 )
             except Exception as e:
@@ -467,10 +475,85 @@ def attach_oauth_routes(
                     code_verifier=str(code_verifier),
                 )
                 access_token = oauth_manager.generate_access_token(result["client_id"])
+                refresh_token = oauth_manager.generate_refresh_token(
+                    client_id=result["client_id"],
+                    scope=result.get("scope") or scope or "",
+                )
                 return TokenResponse(
                     access_token=access_token,
                     token_type="Bearer",
-                    expires_in=3600,
+                    expires_in=oauth_manager.token_expiry_seconds(),
+                    refresh_token=refresh_token,
+                    scope=result.get("scope") or scope,
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "invalid_grant",
+                        "error_description": str(e),
+                    },
+                )
+
+        if grant_type == "refresh_token":
+            refresh_token_value = body.get("refresh_token")
+
+            if not client_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "invalid_request",
+                        "error_description": "Missing client_id",
+                    },
+                )
+
+            if not refresh_token_value:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "invalid_request",
+                        "error_description": "Missing refresh_token",
+                    },
+                )
+
+            # For public clients, allow auth method 'none'. For confidential clients,
+            # accept client_secret if provided.
+            if client_secret is not None:
+                if not oauth_manager.verify_client(str(client_id), str(client_secret)):
+                    raise HTTPException(
+                        status_code=401,
+                        detail={
+                            "error": "invalid_client",
+                            "error_description": "Invalid client credentials",
+                        },
+                        headers={"WWW-Authenticate": "Basic"},
+                    )
+            else:
+                client = oauth_manager.get_client(str(client_id))
+                if not client or client.get("revoked", False):
+                    raise HTTPException(
+                        status_code=401,
+                        detail={
+                            "error": "invalid_client",
+                            "error_description": "Invalid client",
+                        },
+                    )
+
+            try:
+                result = oauth_manager.consume_refresh_token(
+                    refresh_token=str(refresh_token_value),
+                    client_id=str(client_id),
+                )
+                access_token = oauth_manager.generate_access_token(result["client_id"])
+                new_refresh_token = oauth_manager.generate_refresh_token(
+                    client_id=result["client_id"],
+                    scope=result.get("scope") or scope or "",
+                )
+                return TokenResponse(
+                    access_token=access_token,
+                    token_type="Bearer",
+                    expires_in=oauth_manager.token_expiry_seconds(),
+                    refresh_token=new_refresh_token,
                     scope=result.get("scope") or scope,
                 )
             except Exception as e:
@@ -486,7 +569,7 @@ def attach_oauth_routes(
             status_code=400,
             detail={
                 "error": "unsupported_grant_type",
-                "error_description": "Supported grant types: client_credentials, authorization_code",
+                "error_description": "Supported grant types: client_credentials, authorization_code, refresh_token",
             },
         )
 
@@ -574,4 +657,4 @@ def run_oauth_server(
         port: Port to bind to
     """
     app = create_oauth_app(oauth_manager)
-    uvicorn.run(app, host=host, port=port, access_log=access_log)
+    uvicorn.run(app, host=host, port=port, access_log=access_log, proxy_headers=True)

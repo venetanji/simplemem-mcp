@@ -47,3 +47,7 @@ Thumbs.db
 
 # OAuth data (should be in volumes)
 .simplemem-mcp/
+
+# Tailscale runtime state + local serve config
+tailscale-data/
+serve.json

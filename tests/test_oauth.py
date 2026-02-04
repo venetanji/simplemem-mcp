@@ -124,6 +124,31 @@ def test_token_expiry(oauth_manager):
     assert payload["exp"] > payload["iat"]
 
 
+def test_refresh_token_flow(oauth_manager):
+    """Test refresh token issuance and rotation."""
+    client = oauth_manager.generate_client("test-client", "Test client")
+
+    refresh_token = oauth_manager.generate_refresh_token(
+        client_id=client["client_id"],
+        scope="mcp offline_access",
+    )
+    assert refresh_token
+
+    result = oauth_manager.consume_refresh_token(
+        refresh_token=refresh_token,
+        client_id=client["client_id"],
+    )
+    assert result["client_id"] == client["client_id"]
+    assert "offline_access" in result["scope"]
+
+    # Reuse should fail
+    with pytest.raises(ValueError):
+        oauth_manager.consume_refresh_token(
+            refresh_token=refresh_token,
+            client_id=client["client_id"],
+        )
+
+
 def test_get_client(oauth_manager):
     """Test getting client information"""
     client = oauth_manager.generate_client("test-client", "Test description")

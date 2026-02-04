@@ -44,3 +44,7 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local runtime state / deployment config
+tailscale-data/
+serve.json

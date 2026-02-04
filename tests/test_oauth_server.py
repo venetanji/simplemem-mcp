@@ -166,6 +166,7 @@ def test_authorization_code_pkce_flow(client, monkeypatch):
     data = token_resp.json()
     assert "access_token" in data
     assert data["token_type"] == "Bearer"
+    assert "refresh_token" in data
 
     # Step 4: cannot reuse code
     token_resp2 = test_client.post(
@@ -180,6 +181,22 @@ def test_authorization_code_pkce_flow(client, monkeypatch):
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     assert token_resp2.status_code == 400
+
+    # Step 5: refresh token grant works
+    refresh_resp = test_client.post(
+        "/oauth/token",
+        data={
+            "grant_type": "refresh_token",
+            "client_id": oauth_client["client_id"],
+            "refresh_token": data["refresh_token"],
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert refresh_resp.status_code == 200
+    refresh_data = refresh_resp.json()
+    assert "access_token" in refresh_data
+    assert refresh_data["token_type"] == "Bearer"
+    assert "refresh_token" in refresh_data
 
 
 def test_token_endpoint_client_credentials(client):
@@ -204,7 +221,7 @@ def test_token_endpoint_client_credentials(client):
     data = response.json()
     assert "access_token" in data
     assert data["token_type"] == "Bearer"
-    assert data["expires_in"] == 3600
+    assert data["expires_in"] == oauth_manager.token_expiry_seconds()
     
     # Verify the token is valid
     token = data["access_token"]

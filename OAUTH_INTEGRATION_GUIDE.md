@@ -90,6 +90,20 @@ curl -X GET http://your-server:8080/oauth/info \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
+### Refresh Token (Authorization Code + PKCE)
+
+When using the Authorization Code flow, the token response includes a
+`refresh_token`. You can exchange it for a new access token without
+re-authorization:
+
+```bash
+curl -X POST http://your-server:8080/oauth/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=refresh_token" \
+  -d "client_id=YOUR_CLIENT_ID" \
+  -d "refresh_token=YOUR_REFRESH_TOKEN"
+```
+
 ## Integration Examples
 
 ## ChatGPT Connector Notes (Authorization Code + PKCE)

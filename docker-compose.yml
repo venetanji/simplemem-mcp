@@ -1,56 +1,92 @@
 services:
   # SimpleMem API service (CUDA/GPU version)
   # This service is built from the venetanji/simplemem-api repository using Dockerfile.cuda
-  simplemem-api:
-    build:
-      context: https://github.com/venetanji/simplemem-api.git
-      dockerfile: Dockerfile.cuda
-    container_name: simplemem-api
-    ports:
-      - "8000:8000"
-    volumes:
-      - api-models:/app/models
-      - api-data:/app/data
-    environment:
-      - MODEL_NAME=${MODEL_NAME:-gpt-4}
-      - API_KEY=${API_KEY}
-      - DB_PATH=/app/data/simplemem_data
-      - DB_TYPE=lancedb
-      - TABLE_NAME=memories
-      - USE_CUDA=true
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    restart: unless-stopped
+  # simplemem-api:
+  #   build:
+  #     context: https://github.com/venetanji/simplemem-api.git
+  #     dockerfile: Dockerfile.cuda
+  #   container_name: simplemem-api
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - api-models:/app/models
+  #     - api-data:/app/data
+  #   environment:
+  #     - MODEL_NAME=${MODEL_NAME:-gpt-4}
+  #     - API_KEY=${API_KEY}
+  #     - DB_PATH=/app/data/simplemem_data
+  #     - DB_TYPE=lancedb
+  #     - TABLE_NAME=memories
+  #     - USE_CUDA=true
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: all
+  #             capabilities: [gpu]
+  #   restart: unless-stopped
     # Health check is defined in the Dockerfile.cuda from simplemem-api repo
 
   # SimpleMem MCP Server
   simplemem-mcp:
+    profiles:
+      - prod
     build:
       context: .
       dockerfile: Dockerfile
     container_name: simplemem-mcp
     ports:
       - "3333:3333"
-      - "8080:8080"
     volumes:
       - mcp-oauth:/root/.simplemem-mcp
     environment:
-      # Point to the API service by container name
-      - SIMPLEMEM_API_ENDPOINT=http://simplemem-api:8000
-    depends_on:
-      - simplemem-api
+      # Point to the API service by container name (override via .env)
+      - SIMPLEMEM_API_ENDPOINT=${SIMPLEMEM_API_ENDPOINT:-http://simplemem-api:8000}
+      # OAuth tuning (defaults keep current behavior)
+      - SIMPLEMEM_OAUTH_TOKEN_EXPIRY_SECONDS=${SIMPLEMEM_OAUTH_TOKEN_EXPIRY_SECONDS:-3600}
+      - SIMPLEMEM_OAUTH_JWT_LEEWAY_SECONDS=${SIMPLEMEM_OAUTH_JWT_LEEWAY_SECONDS:-60}
+    # depends_on:
+    #   - simplemem-api
     restart: unless-stopped
     # Health check is defined in the Dockerfile
 
+  # SimpleMem MCP Server (Dev)
+  # Bind-mounts the repo and installs in editable mode so changes apply immediately.
+  # Run with: docker compose --profile dev up --build
+  simplemem-mcp-dev:
+    profiles:
+      - dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: simplemem-mcp-dev
+    working_dir: /app
+    ports:
+      - "3333:3333"
+    volumes:
+      - ./:/app
+      - mcp-oauth:/root/.simplemem-mcp
+    environment:
+      - SIMPLEMEM_API_ENDPOINT=${SIMPLEMEM_API_ENDPOINT:-http://simplemem-api:8000}
+      # Dev defaults: keep tokens valid longer to avoid frequent re-auth during iteration.
+      - SIMPLEMEM_OAUTH_TOKEN_EXPIRY_SECONDS=${SIMPLEMEM_OAUTH_TOKEN_EXPIRY_SECONDS:-86400}
+      - SIMPLEMEM_OAUTH_JWT_LEEWAY_SECONDS=${SIMPLEMEM_OAUTH_JWT_LEEWAY_SECONDS:-60}
+    command:
+      - sh
+      - -lc
+      - |
+        uv pip install --system -e '.[dev]' && \
+        exec simplemem-mcp --oauth-required --transport streamable-http --host 0.0.0.0 --port 3333 --access-log
+    restart: unless-stopped
+
 volumes:
-  api-models:
-    driver: local
-  api-data:
-    driver: local
+  # api-models:
+  #   driver: local
+  # api-data:
+  #   driver: local
   mcp-oauth:
+    driver: local
+
+  mcp-oauth-dev:
     driver: local

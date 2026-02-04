@@ -279,6 +279,11 @@ def _run_server(args):
             """
 
             scope = dict(request.scope)
+            # When handling /mcp (no trailing slash) we manually forward the request
+            # into the mounted FastMCP app. Ensure the forwarded scope matches what
+            # Starlette mount routing would have produced for /mcp/ so auth metadata
+            # and URL generation are consistent.
+            scope["root_path"] = mcp_path
             scope["path"] = "/"
             scope["raw_path"] = b"/"
 
@@ -315,7 +320,7 @@ def _run_server(args):
         )
         print(f"MCP Endpoint: http://{host}:{port}{mcp_path}", file=sys.stderr)
 
-        uvicorn.run(app, host=host, port=port, access_log=args.access_log)
+        uvicorn.run(app, host=host, port=port, access_log=args.access_log, proxy_headers=True)
         return
 
     transport_kwargs = {}

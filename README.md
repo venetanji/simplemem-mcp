@@ -113,6 +113,22 @@ docker-compose logs -f
 docker-compose down
 ```
 
+#### Optional: Tailscale public URL (Compose override)
+
+If you want to expose the MCP server over Tailscale, use the optional override file:
+
+- Override file: [docker-compose.tailscale.override.yml](docker-compose.tailscale.override.yml)
+
+```bash
+# Create a .env file with your Tailscale auth key
+echo "TS_AUTHKEY=tskey-auth-..." >> .env
+
+# Start with the override
+docker compose -f docker-compose.yml -f docker-compose.tailscale.override.yml up -d
+```
+
+This keeps the base compose simple (no Tailscale) while letting you opt-in via the override file.
+
 The docker-compose setup will:
 - Build and run the **simplemem-api** service with CUDA/GPU support (from [simplemem-api repository](https://github.com/venetanji/simplemem-api))
 - Build and run the **simplemem-mcp** server connected to the API
@@ -358,8 +374,9 @@ This is the flow ChatGPT Connectors typically use:
 2. Client fetches `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`
 3. Client redirects the user to `/oauth/authorize` (consent screen)
 4. Server redirects back to the client’s `redirect_uri` with `code`
-5. Client exchanges `code` + `code_verifier` at `/oauth/token`
+5. Client exchanges `code` + `code_verifier` at `/oauth/token` (receives `access_token` + `refresh_token`)
 6. Client calls MCP endpoints with `Authorization: Bearer <access_token>`
+7. Client can refresh tokens via `grant_type=refresh_token`
 
 Redirect URI policy:
 
@@ -427,7 +444,8 @@ Any client that supports OAuth 2.0 client credentials flow can authenticate:
 ### Security Considerations
 
 - **Secure Storage**: OAuth client credentials and secrets are stored in `~/.simplemem-mcp/oauth/` with restrictive permissions (700 for directory, 600 for files)
-- **Token Expiry**: Access tokens expire after 1 hour by default
+- **Token Expiry**: Access tokens expire after 1 hour by default (configurable via `SIMPLEMEM_OAUTH_TOKEN_EXPIRY_SECONDS`)
+- **Clock Skew**: If your proxy/container clocks drift, set `SIMPLEMEM_OAUTH_JWT_LEEWAY_SECONDS` (e.g. `60`) to avoid premature re-auth
 - **Secret Key**: A random secret key is automatically generated for JWT signing
 - **HTTPS Recommended**: For production deployments, use HTTPS to protect tokens in transit
 - **Revocation**: Revoke compromised clients immediately using `oauth-revoke-client`

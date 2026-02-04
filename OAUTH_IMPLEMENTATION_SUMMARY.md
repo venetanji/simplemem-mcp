@@ -6,6 +6,7 @@ Successfully implemented OAuth 2.0 authentication for simplemem-mcp, enabling ex
 
 - Authorization Code + PKCE (interactive “Sign in”)
 - Client Credentials (service-to-service)
+- Refresh Token grant (token rotation)
 
 ## Implementation Details
 
@@ -14,6 +15,7 @@ Successfully implemented OAuth 2.0 authentication for simplemem-mcp, enabling ex
 1. **OAuth Manager** (`src/simplemem_mcp/oauth.py`)
    - Client credentials generation and management
    - JWT token generation and validation
+   - Refresh token issuance and rotation
    - Secure storage with file permissions (700/600)
    - Client revocation support
 
@@ -49,6 +51,7 @@ OAuth 2.0 token endpoint supporting:
 
 - `grant_type=client_credentials`
 - `grant_type=authorization_code` (PKCE)
+- `grant_type=refresh_token`
 
 Accepts `application/x-www-form-urlencoded` (recommended) and `application/json` (legacy/tests).
 
@@ -66,7 +69,8 @@ Accepts `application/x-www-form-urlencoded` (recommended) and `application/json`
 {
   "access_token": "eyJhbGci...",
   "token_type": "Bearer",
-  "expires_in": 3600
+   "expires_in": 3600,
+   "refresh_token": "..."
 }
 ```
 

@@ -81,9 +81,21 @@ curl -X GET http://localhost:8080/oauth/info \
 
 ## Token Properties
 
-- **Expires in**: 3600 seconds (1 hour)
+- **Expires in**: 3600 seconds (1 hour) by default
+- **Configure**: `SIMPLEMEM_OAUTH_TOKEN_EXPIRY_SECONDS=86400` (example: 24 hours)
+- **Clock skew leeway**: `SIMPLEMEM_OAUTH_JWT_LEEWAY_SECONDS=60` (example: allow 60s drift)
 - **Type**: Bearer token
 - **Algorithm**: HS256 (HMAC-SHA256)
+
+## Refresh Token Grant
+
+```bash
+curl -X POST http://localhost:8080/oauth/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=refresh_token" \
+  -d "client_id=<client_id>" \
+  -d "refresh_token=<refresh_token>"
+```
 
 ## Security Notes
 

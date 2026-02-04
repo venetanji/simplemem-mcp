@@ -23,8 +23,7 @@ RUN mkdir -p /root/.simplemem-mcp/oauth && chmod 700 /root/.simplemem-mcp
 
 # Expose ports
 # 3333 for MCP HTTP transports (streamable-http/sse)
-# 8080 for dedicated OAuth server
-EXPOSE 3333 8080
+EXPOSE 3333
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
@@ -32,4 +31,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Default command: run MCP server with streamable-http transport
 # Override with docker-compose or docker run commands as needed
-CMD ["simplemem-mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "3333"]
+CMD ["simplemem-mcp", "--oauth-required", "--transport",  "streamable-http", "--host", "0.0.0.0", "--port", "3333"]
